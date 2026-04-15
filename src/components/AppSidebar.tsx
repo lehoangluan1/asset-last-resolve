@@ -1,7 +1,7 @@
 import { Link, useLocation } from 'react-router-dom';
 import {
-  LayoutDashboard, Box, ArrowLeftRight, ClipboardCheck, AlertTriangle,
-  Wrench, Trash2, BarChart3, Settings, ChevronLeft, ChevronRight
+  LayoutDashboard, CalendarCheck, Map, ShoppingCart, ChefHat,
+  Receipt, UtensilsCrossed, Package, ChevronLeft, ChevronRight
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useState } from 'react';
@@ -14,31 +14,25 @@ const navGroups = [
     ],
   },
   {
-    label: 'Asset Operations',
+    label: 'Front of House',
     items: [
-      { label: 'Assets', icon: Box, path: '/assets' },
-      { label: 'Assignments & Transfers', icon: ArrowLeftRight, path: '/assignments' },
+      { label: 'Reservations & Tables', icon: CalendarCheck, path: '/reservations' },
+      { label: 'Floor Map', icon: Map, path: '/floor-map' },
     ],
   },
   {
-    label: 'Verification',
+    label: 'Operations',
     items: [
-      { label: 'Verification Campaigns', icon: ClipboardCheck, path: '/verification' },
-      { label: 'Discrepancies', icon: AlertTriangle, path: '/discrepancies' },
+      { label: 'Orders', icon: ShoppingCart, path: '/orders' },
+      { label: 'Kitchen', icon: ChefHat, path: '/kitchen' },
+      { label: 'Billing', icon: Receipt, path: '/billing' },
     ],
   },
   {
-    label: 'Lifecycle',
+    label: 'Management',
     items: [
-      { label: 'Maintenance', icon: Wrench, path: '/maintenance' },
-      { label: 'Disposal', icon: Trash2, path: '/disposal' },
-    ],
-  },
-  {
-    label: 'Intelligence',
-    items: [
-      { label: 'Reports & Audit', icon: BarChart3, path: '/reports' },
-      { label: 'Admin / Reference', icon: Settings, path: '/admin' },
+      { label: 'Menu', icon: UtensilsCrossed, path: '/menu' },
+      { label: 'Inventory', icon: Package, path: '/inventory' },
     ],
   },
 ];
@@ -52,15 +46,13 @@ export function AppSidebar() {
       'flex flex-col border-r bg-card h-screen sticky top-0 transition-all duration-200',
       collapsed ? 'w-16' : 'w-60'
     )}>
-      {/* Logo */}
       <div className="flex items-center gap-2 px-4 h-14 border-b shrink-0">
         <div className="h-8 w-8 rounded-lg bg-primary flex items-center justify-center shrink-0">
-          <Box className="h-4 w-4 text-primary-foreground" />
+          <UtensilsCrossed className="h-4 w-4 text-primary-foreground" />
         </div>
-        {!collapsed && <span className="font-bold text-sm text-foreground tracking-tight">Asset Mgmt</span>}
+        {!collapsed && <span className="font-bold text-sm text-foreground tracking-tight">Restaurant</span>}
       </div>
 
-      {/* Navigation */}
       <nav className="flex-1 overflow-y-auto py-3 px-2 scrollbar-thin">
         {navGroups.map(group => (
           <div key={group.label} className="mb-4">
@@ -71,7 +63,7 @@ export function AppSidebar() {
             )}
             <div className="space-y-0.5">
               {group.items.map(item => {
-                const active = location.pathname === item.path || 
+                const active = location.pathname === item.path ||
                   (item.path !== '/' && location.pathname.startsWith(item.path));
                 return (
                   <Link
@@ -95,7 +87,6 @@ export function AppSidebar() {
         ))}
       </nav>
 
-      {/* Collapse toggle */}
       <div className="border-t p-2 shrink-0">
         <button
           onClick={() => setCollapsed(!collapsed)}
