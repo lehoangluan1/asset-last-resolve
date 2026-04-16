@@ -67,6 +67,7 @@ Current `docker-compose.yml` remains suitable for local demos and smoke tests.
 | `JWT_ALLOW_DEMO_SECRET` | deployment | set to `false` |
 | `JWT_EXPIRATION_SECONDS` | optional | token lifetime |
 | `CORS_ALLOWED_ORIGINS` | split-host deployment | allowed frontend origins |
+| `CORS_ALLOWED_ORIGIN_PATTERNS` | optional | wildcard-style origins such as `https://*.onrender.com` |
 
 ## Production Profile Expectations
 
@@ -93,8 +94,30 @@ Recommended topology:
 Configuration notes:
 
 - backend env: `SPRING_PROFILES_ACTIVE=prod`, database vars, `JWT_SECRET`, `CORS_ALLOWED_ORIGINS`
+- backend can also use `CORS_ALLOWED_ORIGIN_PATTERNS=https://*.onrender.com` to support Render-hosted frontend URLs and previews more safely than using `*`
 - frontend env: `VITE_API_BASE_URL=https://<render-backend-host>`
 - good fit because Render supports both web services and static frontend hosting
+
+Recommended repo pattern for this project:
+
+- use the included `render.yaml` blueprint
+- deploy backend as a Web Service from `backend/`
+- deploy frontend as a Static Site from `frontend/`
+- use Render Postgres for the backend `DB_URL`
+- keep `VITE_APP_BASE_PATH=/`
+- use the new public backend health endpoint `GET /api/health` for Render health checks
+
+Suggested values:
+
+- Backend:
+  - `SPRING_PROFILES_ACTIVE=prod`
+  - `JWT_ALLOW_DEMO_SECRET=false`
+  - `JWT_SECRET=<long random secret>`
+  - `CORS_ALLOWED_ORIGINS=https://<your-frontend>.onrender.com`
+  - `CORS_ALLOWED_ORIGIN_PATTERNS=https://*.onrender.com`
+- Frontend:
+  - `VITE_API_BASE_URL=https://<your-backend>.onrender.com`
+  - `VITE_APP_BASE_PATH=/`
 
 ## Railway
 

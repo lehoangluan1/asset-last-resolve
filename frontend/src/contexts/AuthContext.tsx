@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { api, HttpError } from '@/lib/api';
 import { clearStoredSession, readStoredSession, writeStoredSession } from '@/lib/auth-storage';
+import { ROUTER_BASENAME } from '@/lib/env';
 import type { PermissionGrant, User } from '@/types';
 
 interface AuthContextType {
@@ -65,7 +66,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    const handleUnauthorized = () => logout();
+    const handleUnauthorized = () => {
+      logout();
+      window.location.replace(`${ROUTER_BASENAME === "/" ? "" : ROUTER_BASENAME}/401`);
+    };
     window.addEventListener('auth:unauthorized', handleUnauthorized);
     return () => window.removeEventListener('auth:unauthorized', handleUnauthorized);
   }, [logout]);

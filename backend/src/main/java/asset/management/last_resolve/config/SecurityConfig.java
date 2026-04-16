@@ -42,6 +42,9 @@ public class SecurityConfig {
     @Value("${app.cors.allowed-origins}")
     private String allowedOrigins;
 
+    @Value("${app.cors.allowed-origin-patterns:}")
+    private String allowedOriginPatterns;
+
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
@@ -51,6 +54,7 @@ public class SecurityConfig {
             .authenticationProvider(authenticationProvider())
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers(HttpMethod.POST, "/api/auth/login").permitAll()
+                .requestMatchers(HttpMethod.GET, "/api/health").permitAll()
                 .requestMatchers("/error").permitAll()
                 .anyRequest().authenticated()
             )
@@ -87,7 +91,16 @@ public class SecurityConfig {
         configuration.addAllowedHeader("*");
         configuration.addAllowedMethod("*");
         for (String origin : allowedOrigins.split(",")) {
-            configuration.addAllowedOrigin(origin.trim());
+            String normalizedOrigin = origin.trim();
+            if (!normalizedOrigin.isBlank()) {
+                configuration.addAllowedOrigin(normalizedOrigin);
+            }
+        }
+        for (String originPattern : allowedOriginPatterns.split(",")) {
+            String normalizedPattern = originPattern.trim();
+            if (!normalizedPattern.isBlank()) {
+                configuration.addAllowedOriginPattern(normalizedPattern);
+            }
         }
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", configuration);

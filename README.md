@@ -153,6 +153,7 @@ These files document the expected variables. The backend does not auto-load `.en
 | `JWT_EXPIRATION_SECONDS` | `28800` |
 | `JWT_ALLOW_DEMO_SECRET` | `true` locally |
 | `CORS_ALLOWED_ORIGINS` | `http://localhost:5173,http://127.0.0.1:5173` |
+| `CORS_ALLOWED_ORIGIN_PATTERNS` | blank locally |
 
 PowerShell example:
 
@@ -369,12 +370,35 @@ Supported deployment patterns:
 - set a real `JWT_SECRET`
 - set `JWT_ALLOW_DEMO_SECRET=false`
 - set `CORS_ALLOWED_ORIGINS` to the actual frontend origin
+- optionally set `CORS_ALLOWED_ORIGIN_PATTERNS=https://*.onrender.com` if you want Render preview/static-site URLs to work without manually updating CORS for each generated hostname
 
 ### GitHub Pages caveat
 
 GitHub Pages can only host the frontend. This app still requires an externally hosted backend, and BrowserRouter-based SPA hosting needs rewrite handling. It is therefore not the recommended primary deployment target.
 
 Full deployment guidance is documented in `docs/deployment-readiness.md`.
+
+### Render deployment pattern
+
+This repo now includes [render.yaml](</c:/Users/LUAN/Downloads/asset_managemt_final/render.yaml>) as a Render Blueprint for:
+
+- a backend web service
+- a frontend static site
+- a PostgreSQL database
+
+Recommended Render settings:
+
+- Backend:
+  - `SPRING_PROFILES_ACTIVE=prod`
+  - `JWT_SECRET=<set in Render dashboard>`
+  - `JWT_ALLOW_DEMO_SECRET=false`
+  - `CORS_ALLOWED_ORIGIN_PATTERNS=https://*.onrender.com`
+  - `CORS_ALLOWED_ORIGINS=https://your-frontend-name.onrender.com`
+- Frontend:
+  - `VITE_API_BASE_URL=https://your-backend-name.onrender.com`
+  - `VITE_APP_BASE_PATH=/`
+
+The backend also exposes a public health check at `GET /api/health`, which is suitable for Render health checks.
 
 ## Common Troubleshooting
 

@@ -10,7 +10,7 @@ export function ProtectedRoutes() {
     return <div className="min-h-screen flex items-center justify-center text-sm text-muted-foreground">Loading workspace...</div>;
   }
   if (!isAuthenticated) {
-    return <Navigate to="/login" replace />;
+    return <Navigate to="/401" replace />;
   }
   return <AppLayout />;
 }
@@ -29,7 +29,7 @@ export function AuthRoute({ children }: { children: ReactNode }) {
 export function RequireGrant({ grant, children }: { grant: PermissionGrant; children: ReactNode }) {
   const { hasGrant } = useAuth();
   if (!hasGrant(grant)) {
-    return <Navigate to="/" replace />;
+    return <Navigate to="/403" replace />;
   }
   return <>{children}</>;
 }

@@ -22,6 +22,9 @@ import UserManagementPage from "./pages/UserManagementPage";
 import ProfilePage from "./pages/ProfilePage";
 import NotificationsPage from "./pages/NotificationsPage";
 import SearchResultsPage from "./pages/SearchResultsPage";
+import UnauthorizedPage from "./pages/UnauthorizedPage";
+import ForbiddenPage from "./pages/ForbiddenPage";
+import InternalServerErrorPage from "./pages/InternalServerErrorPage";
 import NotFound from "./pages/NotFound";
 import { grants } from "@/lib/permissions";
 import { ROUTER_BASENAME } from "@/lib/env";
@@ -37,6 +40,10 @@ const App = () => (
         <BrowserRouter basename={ROUTER_BASENAME}>
           <Routes>
             <Route path="/login" element={<AuthRoute><LoginPage /></AuthRoute>} />
+            <Route path="/401" element={<UnauthorizedPage />} />
+            <Route path="/403" element={<ForbiddenPage />} />
+            <Route path="/404" element={<NotFound />} />
+            <Route path="/500" element={<InternalServerErrorPage />} />
             <Route element={<ProtectedRoutes />}>
               <Route path="/" element={<RequireGrant grant={grants.dashboardRead}><DashboardPage /></RequireGrant>} />
               <Route path="/assets" element={<RequireGrant grant={grants.assetsRead}><AssetsPage /></RequireGrant>} />
