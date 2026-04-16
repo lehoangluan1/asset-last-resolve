@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { PageHeader } from '@/components/PageHeader';
-import { categories as seedCategories, departments, locations } from '@/data/mock-data';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
@@ -14,58 +14,88 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Plus, Pencil, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { StatusBadge } from '@/components/StatusBadge';
+import { api, HttpError } from '@/lib/api';
 import type { AssetCategory } from '@/types';
 
 const emptyCategory: Omit<AssetCategory, 'id'> = {
-  name: '', code: '', description: '', parentId: undefined,
-  borrowableByDefault: false, requiresSerial: true, requiresVerification: true, status: 'active',
+  name: '',
+  code: '',
+  description: '',
+  parentId: undefined,
+  borrowableByDefault: false,
+  requiresSerial: true,
+  requiresVerification: true,
+  status: 'active',
 };
 
 export default function AdminPage() {
-  const [catList, setCatList] = useState<AssetCategory[]>(seedCategories.map(c => ({
-    ...c, borrowableByDefault: false, requiresSerial: true, requiresVerification: true, status: 'active' as const,
-  })));
+  const queryClient = useQueryClient();
+  const categoriesQuery = useQuery({ queryKey: ['reference', 'categories'], queryFn: api.reference.categories });
+  const departmentsQuery = useQuery({ queryKey: ['reference', 'departments'], queryFn: api.reference.departments });
+  const locationsQuery = useQuery({ queryKey: ['reference', 'locations'], queryFn: api.reference.locations });
+
   const [catOpen, setCatOpen] = useState(false);
   const [catForm, setCatForm] = useState<Omit<AssetCategory, 'id'>>(emptyCategory);
   const [editingCatId, setEditingCatId] = useState<string | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
+  const categories = categoriesQuery.data ?? [];
+  const departments = departmentsQuery.data ?? [];
+  const locations = locationsQuery.data ?? [];
+
+  const saveMutation = useMutation({
+    mutationFn: async () => {
+      if (editingCatId) return api.reference.updateCategory(editingCatId, catForm);
+      return api.reference.createCategory(catForm);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['reference', 'categories'] });
+      toast.success(editingCatId ? 'Category updated' : 'Category created');
+      setCatOpen(false);
+    },
+    onError: (error) => toast.error(error instanceof HttpError ? error.message : 'Unable to save category'),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => api.reference.deleteCategory(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['reference', 'categories'] });
+      toast.success('Category deleted');
+    },
+    onError: (error) => toast.error(error instanceof HttpError ? error.message : 'Unable to delete category'),
+  });
+
+  const categoryNames = useMemo(() => new Set(categories.map(category => category.code)), [categories]);
+
   const openNewCat = () => { setCatForm(emptyCategory); setEditingCatId(null); setErrors({}); setCatOpen(true); };
-  const openEditCat = (c: AssetCategory) => {
-    setCatForm({ name: c.name, code: c.code, description: c.description, parentId: c.parentId, borrowableByDefault: c.borrowableByDefault, requiresSerial: c.requiresSerial, requiresVerification: c.requiresVerification, status: c.status });
-    setEditingCatId(c.id); setErrors({}); setCatOpen(true);
+  const openEditCat = (category: AssetCategory) => {
+    setCatForm({
+      name: category.name,
+      code: category.code,
+      description: category.description,
+      parentId: category.parentId,
+      borrowableByDefault: category.borrowableByDefault,
+      requiresSerial: category.requiresSerial,
+      requiresVerification: category.requiresVerification,
+      status: category.status,
+    });
+    setEditingCatId(category.id);
+    setErrors({});
+    setCatOpen(true);
   };
 
   const validateCat = () => {
-    const e: Record<string, string> = {};
-    if (!catForm.name.trim()) e.name = 'Name is required';
-    if (!catForm.code.trim()) e.code = 'Code is required';
-    if (catList.some(c => c.code === catForm.code.trim() && c.id !== editingCatId)) e.code = 'Code already exists';
-    setErrors(e);
-    return Object.keys(e).length === 0;
-  };
-
-  const saveCat = () => {
-    if (!validateCat()) return;
-    if (editingCatId) {
-      setCatList(prev => prev.map(c => c.id === editingCatId ? { ...c, ...catForm, name: catForm.name.trim(), code: catForm.code.trim() } : c));
-      toast.success('Category updated');
-    } else {
-      const newCat: AssetCategory = { ...catForm, id: `cat-${Date.now()}`, name: catForm.name.trim(), code: catForm.code.trim() };
-      setCatList(prev => [...prev, newCat]);
-      toast.success('Category created');
-    }
-    setCatOpen(false);
-  };
-
-  const deleteCat = (id: string) => {
-    setCatList(prev => prev.filter(c => c.id !== id));
-    toast.success('Category deleted');
+    const nextErrors: Record<string, string> = {};
+    if (!catForm.name.trim()) nextErrors.name = 'Name is required';
+    if (!catForm.code.trim()) nextErrors.code = 'Code is required';
+    if (categoryNames.has(catForm.code.trim()) && !editingCatId) nextErrors.code = 'Code already exists';
+    setErrors(nextErrors);
+    return Object.keys(nextErrors).length === 0;
   };
 
   return (
     <div>
-      <PageHeader title="Admin / Reference Data" description="Manage categories, departments, locations, and other reference data" />
+      <PageHeader title="Admin / Reference Data" description="Manage categories and review shared reference data" />
       <div className="p-6">
         <Tabs defaultValue="categories">
           <TabsList>
@@ -83,16 +113,16 @@ export default function AdminPage() {
               <Table>
                 <TableHeader><TableRow><TableHead>Code</TableHead><TableHead>Name</TableHead><TableHead>Description</TableHead><TableHead>Status</TableHead><TableHead className="w-[80px]">Actions</TableHead></TableRow></TableHeader>
                 <TableBody>
-                  {catList.map(c => (
-                    <TableRow key={c.id}>
-                      <TableCell className="font-mono text-xs">{c.code}</TableCell>
-                      <TableCell className="font-medium">{c.name}</TableCell>
-                      <TableCell className="text-sm text-muted-foreground">{c.description}</TableCell>
-                      <TableCell><StatusBadge status={c.status || 'active'} /></TableCell>
+                  {categories.map(category => (
+                    <TableRow key={category.id}>
+                      <TableCell className="font-mono text-xs">{category.code}</TableCell>
+                      <TableCell className="font-medium">{category.name}</TableCell>
+                      <TableCell className="text-sm text-muted-foreground">{category.description}</TableCell>
+                      <TableCell><StatusBadge status={category.status || 'active'} /></TableCell>
                       <TableCell>
                         <div className="flex gap-1">
-                          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEditCat(c)}><Pencil className="h-3.5 w-3.5" /></Button>
-                          <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => deleteCat(c.id)}><Trash2 className="h-3.5 w-3.5" /></Button>
+                          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEditCat(category)}><Pencil className="h-3.5 w-3.5" /></Button>
+                          <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => deleteMutation.mutate(category.id)}><Trash2 className="h-3.5 w-3.5" /></Button>
                         </div>
                       </TableCell>
                     </TableRow>
@@ -106,12 +136,11 @@ export default function AdminPage() {
             <Card className="rounded-xl overflow-hidden">
               <CardHeader className="flex flex-row items-center justify-between">
                 <CardTitle className="text-sm">Departments</CardTitle>
-                <Button size="sm" onClick={() => toast.info('Add department')}><Plus className="h-4 w-4 mr-1.5" />Add</Button>
               </CardHeader>
               <Table>
                 <TableHeader><TableRow><TableHead>Code</TableHead><TableHead>Name</TableHead><TableHead>Location</TableHead><TableHead>Employees</TableHead></TableRow></TableHeader>
                 <TableBody>
-                  {departments.map(d => <TableRow key={d.id}><TableCell className="font-mono text-xs">{d.code}</TableCell><TableCell className="font-medium">{d.name}</TableCell><TableCell className="text-sm">{d.location}</TableCell><TableCell className="text-sm">{d.employeeCount}</TableCell></TableRow>)}
+                  {departments.map(department => <TableRow key={department.id}><TableCell className="font-mono text-xs">{department.code}</TableCell><TableCell className="font-medium">{department.name}</TableCell><TableCell className="text-sm">{department.location}</TableCell><TableCell className="text-sm">{department.employeeCount}</TableCell></TableRow>)}
                 </TableBody>
               </Table>
             </Card>
@@ -121,12 +150,11 @@ export default function AdminPage() {
             <Card className="rounded-xl overflow-hidden">
               <CardHeader className="flex flex-row items-center justify-between">
                 <CardTitle className="text-sm">Locations</CardTitle>
-                <Button size="sm" onClick={() => toast.info('Add location')}><Plus className="h-4 w-4 mr-1.5" />Add</Button>
               </CardHeader>
               <Table>
                 <TableHeader><TableRow><TableHead>Name</TableHead><TableHead>Building</TableHead><TableHead>Floor</TableHead><TableHead>Room</TableHead></TableRow></TableHeader>
                 <TableBody>
-                  {locations.map(l => <TableRow key={l.id}><TableCell className="font-medium">{l.name}</TableCell><TableCell className="text-sm">{l.building}</TableCell><TableCell className="text-sm">{l.floor}</TableCell><TableCell className="text-sm">{l.room || '—'}</TableCell></TableRow>)}
+                  {locations.map(location => <TableRow key={location.id}><TableCell className="font-medium">{location.name}</TableCell><TableCell className="text-sm">{location.building}</TableCell><TableCell className="text-sm">{location.floor}</TableCell><TableCell className="text-sm">{location.room || '—'}</TableCell></TableRow>)}
                 </TableBody>
               </Table>
             </Card>
@@ -134,7 +162,6 @@ export default function AdminPage() {
         </Tabs>
       </div>
 
-      {/* Category Form Dialog */}
       <Dialog open={catOpen} onOpenChange={setCatOpen}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
@@ -144,32 +171,32 @@ export default function AdminPage() {
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <Label>Category Name <span className="text-destructive">*</span></Label>
-                <Input value={catForm.name} onChange={e => setCatForm(p => ({ ...p, name: e.target.value }))} className="mt-1.5" placeholder="e.g. Laptops" />
+                <Input value={catForm.name} onChange={e => setCatForm(current => ({ ...current, name: e.target.value }))} className="mt-1.5" placeholder="e.g. Laptops" />
                 {errors.name && <p className="text-xs text-destructive mt-1">{errors.name}</p>}
               </div>
               <div>
                 <Label>Code <span className="text-destructive">*</span></Label>
-                <Input value={catForm.code} onChange={e => setCatForm(p => ({ ...p, code: e.target.value.toUpperCase() }))} className="mt-1.5" placeholder="e.g. LAP" maxLength={6} />
+                <Input value={catForm.code} onChange={e => setCatForm(current => ({ ...current, code: e.target.value.toUpperCase() }))} className="mt-1.5" placeholder="e.g. LAP" maxLength={6} />
                 {errors.code && <p className="text-xs text-destructive mt-1">{errors.code}</p>}
               </div>
             </div>
             <div>
               <Label>Description</Label>
-              <Textarea value={catForm.description} onChange={e => setCatForm(p => ({ ...p, description: e.target.value }))} className="mt-1.5" rows={2} placeholder="Brief description of this category" />
+              <Textarea value={catForm.description} onChange={e => setCatForm(current => ({ ...current, description: e.target.value }))} className="mt-1.5" rows={2} placeholder="Brief description of this category" />
             </div>
             <div>
               <Label>Parent Category</Label>
-              <Select value={catForm.parentId || '_none'} onValueChange={v => setCatForm(p => ({ ...p, parentId: v === '_none' ? undefined : v }))}>
+              <Select value={catForm.parentId || '_none'} onValueChange={value => setCatForm(current => ({ ...current, parentId: value === '_none' ? undefined : value }))}>
                 <SelectTrigger className="mt-1.5"><SelectValue placeholder="None (top-level)" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="_none">None (top-level)</SelectItem>
-                  {catList.filter(c => c.id !== editingCatId).map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
+                  {categories.filter(category => category.id !== editingCatId).map(category => <SelectItem key={category.id} value={category.id}>{category.name}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
             <div>
               <Label>Status</Label>
-              <Select value={catForm.status || 'active'} onValueChange={v => setCatForm(p => ({ ...p, status: v as 'active' | 'inactive' }))}>
+              <Select value={catForm.status || 'active'} onValueChange={value => setCatForm(current => ({ ...current, status: value as 'active' | 'inactive' }))}>
                 <SelectTrigger className="mt-1.5"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="active">Active</SelectItem>
@@ -180,21 +207,21 @@ export default function AdminPage() {
             <div className="space-y-3 pt-1">
               <div className="flex items-center justify-between">
                 <Label className="font-normal">Borrowable by default</Label>
-                <Switch checked={catForm.borrowableByDefault} onCheckedChange={v => setCatForm(p => ({ ...p, borrowableByDefault: v }))} />
+                <Switch checked={!!catForm.borrowableByDefault} onCheckedChange={value => setCatForm(current => ({ ...current, borrowableByDefault: value }))} />
               </div>
               <div className="flex items-center justify-between">
                 <Label className="font-normal">Requires serial number</Label>
-                <Switch checked={catForm.requiresSerial} onCheckedChange={v => setCatForm(p => ({ ...p, requiresSerial: v }))} />
+                <Switch checked={catForm.requiresSerial !== false} onCheckedChange={value => setCatForm(current => ({ ...current, requiresSerial: value }))} />
               </div>
               <div className="flex items-center justify-between">
                 <Label className="font-normal">Requires verification</Label>
-                <Switch checked={catForm.requiresVerification} onCheckedChange={v => setCatForm(p => ({ ...p, requiresVerification: v }))} />
+                <Switch checked={catForm.requiresVerification !== false} onCheckedChange={value => setCatForm(current => ({ ...current, requiresVerification: value }))} />
               </div>
             </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setCatOpen(false)}>Cancel</Button>
-            <Button onClick={saveCat}>{editingCatId ? 'Update' : 'Create'} Category</Button>
+            <Button onClick={() => { if (validateCat()) saveMutation.mutate(); }} disabled={saveMutation.isPending}>{editingCatId ? 'Update' : 'Create'} Category</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

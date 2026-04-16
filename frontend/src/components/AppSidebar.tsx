@@ -5,47 +5,49 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useState } from 'react';
+import { useAuth } from '@/contexts/AuthContext';
+import { grants } from '@/lib/permissions';
 
 const navGroups = [
   {
     label: 'Overview',
     items: [
-      { label: 'Dashboard', icon: LayoutDashboard, path: '/' },
+      { label: 'Dashboard', icon: LayoutDashboard, path: '/', grant: grants.dashboardRead },
     ],
   },
   {
     label: 'Asset Operations',
     items: [
-      { label: 'Assets', icon: Box, path: '/assets' },
-      { label: 'Assignments & Transfers', icon: ArrowLeftRight, path: '/assignments' },
-      { label: 'Borrow Requests', icon: HandCoins, path: '/borrow-requests' },
+      { label: 'Assets', icon: Box, path: '/assets', grant: grants.assetsRead },
+      { label: 'Assignments & Transfers', icon: ArrowLeftRight, path: '/assignments', grant: grants.assignmentsRead },
+      { label: 'Borrow Requests', icon: HandCoins, path: '/borrow-requests', grant: grants.borrowsRead },
     ],
   },
   {
     label: 'Verification',
     items: [
-      { label: 'Verification Campaigns', icon: ClipboardCheck, path: '/verification' },
-      { label: 'Discrepancies', icon: AlertTriangle, path: '/discrepancies' },
+      { label: 'Verification Campaigns', icon: ClipboardCheck, path: '/verification', grant: grants.verificationRead },
+      { label: 'Discrepancies', icon: AlertTriangle, path: '/discrepancies', grant: grants.discrepanciesRead },
     ],
   },
   {
     label: 'Support',
     items: [
-      { label: 'Maintenance', icon: Wrench, path: '/maintenance' },
-      { label: 'Disposal', icon: Trash2, path: '/disposal' },
+      { label: 'Maintenance', icon: Wrench, path: '/maintenance', grant: grants.maintenanceRead },
+      { label: 'Disposal', icon: Trash2, path: '/disposal', grant: grants.disposalRead },
     ],
   },
   {
     label: 'Intelligence',
     items: [
-      { label: 'Reports & Audit', icon: BarChart3, path: '/reports' },
+      { label: 'Reports & Audit', icon: BarChart3, path: '/reports', grant: grants.reportsRead },
     ],
   },
   {
     label: 'Administration',
     items: [
-      { label: 'Reference Data', icon: Settings, path: '/admin' },
-      { label: 'User Management', icon: Users, path: '/users' },
+      { label: 'Reference Data', icon: Settings, path: '/admin', grant: grants.referenceManage },
+      { label: 'User Management', icon: Users, path: '/users', grant: grants.usersManage },
     ],
   },
 ];
@@ -53,6 +55,7 @@ const navGroups = [
 export function AppSidebar() {
   const location = useLocation();
   const [collapsed, setCollapsed] = useState(false);
+  const { hasGrant } = useAuth();
 
   return (
     <aside className={cn(
@@ -67,7 +70,10 @@ export function AppSidebar() {
       </div>
 
       <nav className="flex-1 overflow-y-auto py-3 px-2 scrollbar-thin">
-        {navGroups.map(group => (
+        {navGroups.map(group => {
+          const items = group.items.filter(item => hasGrant(item.grant));
+          if (items.length === 0) return null;
+          return (
           <div key={group.label} className="mb-4">
             {!collapsed && (
               <p className="px-2 mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
@@ -75,7 +81,7 @@ export function AppSidebar() {
               </p>
             )}
             <div className="space-y-0.5">
-              {group.items.map(item => {
+              {items.map(item => {
                 const active = location.pathname === item.path ||
                   (item.path !== '/' && location.pathname.startsWith(item.path));
                 return (
@@ -97,7 +103,7 @@ export function AppSidebar() {
               })}
             </div>
           </div>
-        ))}
+        )})}
       </nav>
 
       <div className="border-t p-2 shrink-0">

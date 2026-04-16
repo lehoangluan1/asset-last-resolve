@@ -1,5 +1,6 @@
+import { FormEvent, useEffect, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
@@ -10,18 +11,46 @@ import { NotificationBell } from '@/components/NotificationPanel';
 export function AppHeader() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+  const [searchParams] = useSearchParams();
+  const [query, setQuery] = useState('');
+
+  useEffect(() => {
+    if (location.pathname === '/search') {
+      setQuery(searchParams.get('q') ?? '');
+      return;
+    }
+    setQuery('');
+  }, [location.pathname, searchParams]);
 
   const handleLogout = () => {
     logout();
     toast.success('Logged out successfully');
   };
 
+  const submitSearch = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const trimmed = query.trim();
+    if (!trimmed) {
+      return;
+    }
+    navigate(`/search?q=${encodeURIComponent(trimmed)}`);
+  };
+
   return (
     <header className="h-14 border-b bg-card flex items-center justify-between px-4 gap-4 shrink-0">
-      <div className="relative flex-1 max-w-md">
+      <form onSubmit={submitSearch} className="relative flex-1 max-w-md">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-        <Input placeholder="Search assets, users, requests..." className="pl-9 h-9 bg-muted/50" />
-      </div>
+        <Input
+          placeholder="Search assets, users, requests..."
+          value={query}
+          onChange={event => setQuery(event.target.value)}
+          className="pl-9 pr-12 h-9 bg-muted/50"
+        />
+        <Button type="submit" size="icon" variant="ghost" className="absolute right-1 top-1/2 h-7 w-7 -translate-y-1/2" aria-label="Search">
+          <Search className="h-4 w-4" />
+        </Button>
+      </form>
       <div className="flex items-center gap-2">
         <NotificationBell />
         <DropdownMenu>

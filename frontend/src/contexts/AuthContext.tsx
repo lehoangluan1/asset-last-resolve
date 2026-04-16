@@ -1,58 +1,100 @@
-import { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
-import type { User, UserRole } from '@/types';
-import { users, demoAccounts } from '@/data/mock-data';
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { api, HttpError } from '@/lib/api';
+import { clearStoredSession, readStoredSession, writeStoredSession } from '@/lib/auth-storage';
+import type { PermissionGrant, User } from '@/types';
 
-interface AuthState {
+interface AuthContextType {
   user: User | null;
+  token: string | null;
   isAuthenticated: boolean;
-}
-
-interface AuthContextType extends AuthState {
-  login: (username: string, password: string) => { success: boolean; error?: string };
+  isLoading: boolean;
+  login: (username: string, password: string) => Promise<{ success: boolean; error?: string }>;
   logout: () => void;
+  refreshUser: () => Promise<void>;
+  updateUser: (user: User) => void;
+  hasGrant: (grant: PermissionGrant) => boolean;
+  hasAnyGrant: (...required: PermissionGrant[]) => boolean;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
-const STORAGE_KEY = 'asset_mgmt_auth';
-
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [state, setState] = useState<AuthState>(() => {
-    try {
-      const stored = localStorage.getItem(STORAGE_KEY);
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        const user = users.find(u => u.id === parsed.userId);
-        if (user) return { user, isAuthenticated: true };
-      }
-    } catch {}
-    return { user: null, isAuthenticated: false };
-  });
-
-  const login = useCallback((username: string, password: string) => {
-    const account = demoAccounts.find(a => a.username === username && a.password === password);
-    if (!account) return { success: false, error: 'Invalid credentials' };
-    const user = users.find(u => u.username === account.username);
-    if (!user) return { success: false, error: 'User not found' };
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ userId: user.id }));
-    setState({ user, isAuthenticated: true });
-    return { success: true };
-  }, []);
+  const stored = readStoredSession();
+  const [user, setUser] = useState<User | null>(stored?.user ?? null);
+  const [token, setToken] = useState<string | null>(stored?.token ?? null);
+  const [isLoading, setIsLoading] = useState<boolean>(!!stored?.token);
 
   const logout = useCallback(() => {
-    localStorage.removeItem(STORAGE_KEY);
-    setState({ user: null, isAuthenticated: false });
+    clearStoredSession();
+    setUser(null);
+    setToken(null);
+    setIsLoading(false);
   }, []);
 
-  return (
-    <AuthContext.Provider value={{ ...state, login, logout }}>
-      {children}
-    </AuthContext.Provider>
-  );
+  const updateUser = useCallback((nextUser: User) => {
+    setUser(nextUser);
+    if (token) {
+      writeStoredSession({ token, user: nextUser });
+    }
+  }, [token]);
+
+  const refreshUser = useCallback(async () => {
+    if (!token) return;
+    setIsLoading(true);
+    try {
+      const me = await api.auth.me();
+      updateUser(me);
+    } catch {
+      logout();
+    } finally {
+      setIsLoading(false);
+    }
+  }, [logout, token, updateUser]);
+
+  const login = useCallback(async (username: string, password: string) => {
+    try {
+      const response = await api.auth.login({ username, password });
+      setToken(response.token);
+      setUser(response.user);
+      writeStoredSession({ token: response.token, user: response.user });
+      return { success: true };
+    } catch (error) {
+      const message = error instanceof HttpError ? error.message : 'Login failed';
+      return { success: false, error: message };
+    }
+  }, []);
+
+  useEffect(() => {
+    const handleUnauthorized = () => logout();
+    window.addEventListener('auth:unauthorized', handleUnauthorized);
+    return () => window.removeEventListener('auth:unauthorized', handleUnauthorized);
+  }, [logout]);
+
+  useEffect(() => {
+    if (!token) return;
+    refreshUser();
+  }, [refreshUser, token]);
+
+  const value = useMemo<AuthContextType>(() => ({
+    user,
+    token,
+    isAuthenticated: !!user && !!token,
+    isLoading,
+    login,
+    logout,
+    refreshUser,
+    updateUser,
+    hasGrant: (grant: PermissionGrant) => !!user?.grants.includes(grant),
+    hasAnyGrant: (...required: PermissionGrant[]) => required.some(grant => !!user?.grants.includes(grant)),
+  }), [user, token, isLoading, login, logout, refreshUser, updateUser]);
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
 export function useAuth() {
-  const ctx = useContext(AuthContext);
-  if (!ctx) throw new Error('useAuth must be used within AuthProvider');
-  return ctx;
+  const context = useContext(AuthContext);
+  if (!context) {
+    throw new Error('useAuth must be used within AuthProvider');
+  }
+  return context;
 }

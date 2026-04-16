@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useState, type FormEvent } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { demoAccounts } from '@/data/mock-data';
+import { demoAccounts } from '@/lib/demo-accounts';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -14,19 +14,24 @@ export default function LoginPage() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [submitting, setSubmitting] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError('');
     if (!username.trim() || !password.trim()) { setError('Please enter both username and password'); return; }
-    const result = login(username, password);
+    setSubmitting(true);
+    const result = await login(username, password);
+    setSubmitting(false);
     if (!result.success) { setError(result.error || 'Login failed'); return; }
     toast.success('Welcome back!');
   };
 
-  const quickLogin = (u: string, p: string) => {
+  const quickLogin = async (u: string, p: string) => {
     setUsername(u); setPassword(p);
-    const result = login(u, p);
+    setSubmitting(true);
+    const result = await login(u, p);
+    setSubmitting(false);
     if (result.success) toast.success('Welcome back!');
   };
 
@@ -53,7 +58,7 @@ export default function LoginPage() {
                 <Input id="password" type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="Enter password" />
               </div>
               {error && <p className="text-sm text-destructive">{error}</p>}
-              <Button type="submit" className="w-full">Sign In</Button>
+              <Button type="submit" className="w-full" disabled={submitting}>{submitting ? 'Signing In...' : 'Sign In'}</Button>
             </form>
           </CardContent>
         </Card>

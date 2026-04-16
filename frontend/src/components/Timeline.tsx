@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { cn } from '@/lib/utils';
 
 interface TimelineItem {
@@ -5,8 +6,8 @@ interface TimelineItem {
   title: string;
   description?: string;
   date: string;
-  icon?: React.ReactNode;
-  badge?: React.ReactNode;
+  icon?: ReactNode;
+  badge?: ReactNode;
 }
 
 interface TimelineProps {

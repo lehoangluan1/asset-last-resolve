@@ -1,5 +1,5 @@
+import { useQuery } from '@tanstack/react-query';
 import { useParams, useNavigate } from 'react-router-dom';
-import { assets, getCategoryById, getDepartmentById, getUserById, getLocationById, assignments, borrowRequests, maintenanceRecords, verificationTasks, discrepancies, auditLogs } from '@/data/mock-data';
 import { PageHeader } from '@/components/PageHeader';
 import { StatusBadge } from '@/components/StatusBadge';
 import { Button } from '@/components/ui/button';
@@ -8,26 +8,32 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Timeline } from '@/components/Timeline';
 import { Pencil, ArrowLeftRight, HandCoins, Wrench, Trash2, ArrowLeft } from 'lucide-react';
+import { api } from '@/lib/api';
+import { useAuth } from '@/contexts/AuthContext';
+import { grants } from '@/lib/permissions';
 
 export default function AssetDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const asset = assets.find(a => a.id === id);
+  const { hasGrant } = useAuth();
 
-  if (!asset) return <div className="p-6 text-center text-muted-foreground">Asset not found</div>;
+  const { data, isLoading } = useQuery({
+    queryKey: ['asset-detail', id],
+    queryFn: () => api.assets.detail(id!),
+    enabled: !!id,
+  });
 
-  const category = getCategoryById(asset.categoryId);
-  const dept = getDepartmentById(asset.departmentId);
-  const assignee = asset.assignedToId ? getUserById(asset.assignedToId) : null;
-  const loc = getLocationById(asset.locationId);
-  const assetAssignments = assignments.filter(a => a.assetId === asset.id);
-  const assetBorrows = borrowRequests.filter(b => b.assetId === asset.id);
-  const assetMaint = maintenanceRecords.filter(m => m.assetId === asset.id);
-  const assetVerif = verificationTasks.filter(v => v.assetId === asset.id);
-  const assetDisc = discrepancies.filter(d => d.assetId === asset.id);
-  const assetLogs = auditLogs.filter(l => l.entityId === asset.id || l.entityName === asset.name).slice(0, 10);
+  if (isLoading) {
+    return <div className="p-6 text-center text-muted-foreground">Loading asset...</div>;
+  }
 
-  const info = (label: string, value: string | null | undefined) => (
+  if (!data) {
+    return <div className="p-6 text-center text-muted-foreground">Asset not found</div>;
+  }
+
+  const asset = data.asset;
+
+  const info = (label: string, value: string | number | null | undefined) => (
     <div className="space-y-1">
       <p className="text-xs text-muted-foreground">{label}</p>
       <p className="text-sm font-medium">{value || '—'}</p>
@@ -36,13 +42,17 @@ export default function AssetDetailPage() {
 
   return (
     <div>
-      <PageHeader title={asset.name} description={`${asset.code} · ${category?.name}`}>
+      <PageHeader title={asset.name} description={`${asset.code} · ${asset.categoryName}`}>
         <Button size="sm" variant="ghost" onClick={() => navigate('/assets')}><ArrowLeft className="h-4 w-4 mr-1.5" />Back</Button>
-        <Button size="sm" variant="outline" onClick={() => navigate(`/assets/${asset.id}/edit`)}><Pencil className="h-4 w-4 mr-1.5" />Edit</Button>
-        <Button size="sm" variant="outline" onClick={() => navigate('/assignments')}><ArrowLeftRight className="h-4 w-4 mr-1.5" />Assign</Button>
-        <Button size="sm" variant="outline"><HandCoins className="h-4 w-4 mr-1.5" />Borrow</Button>
-        <Button size="sm" variant="outline"><Wrench className="h-4 w-4 mr-1.5" />Maintenance</Button>
-        <Button size="sm" variant="outline" className="text-destructive"><Trash2 className="h-4 w-4 mr-1.5" />Dispose</Button>
+        {hasGrant(grants.assetsManage) && (
+          <Button size="sm" variant="outline" onClick={() => navigate(`/assets/${asset.id}/edit`)}><Pencil className="h-4 w-4 mr-1.5" />Edit</Button>
+        )}
+        {hasGrant(grants.assignmentsRead) && (
+          <Button size="sm" variant="outline" onClick={() => navigate('/assignments')}><ArrowLeftRight className="h-4 w-4 mr-1.5" />Assign</Button>
+        )}
+        {hasGrant(grants.borrowsRequest) && <Button size="sm" variant="outline" onClick={() => navigate('/borrow-requests')}><HandCoins className="h-4 w-4 mr-1.5" />Borrow</Button>}
+        {hasGrant(grants.maintenanceRead) && <Button size="sm" variant="outline" onClick={() => navigate('/maintenance')}><Wrench className="h-4 w-4 mr-1.5" />Maintenance</Button>}
+        {hasGrant(grants.disposalManage) && <Button size="sm" variant="outline" className="text-destructive" onClick={() => navigate('/disposal')}><Trash2 className="h-4 w-4 mr-1.5" />Dispose</Button>}
       </PageHeader>
 
       <div className="p-6">
@@ -57,11 +67,11 @@ export default function AssetDetailPage() {
             <Tabs defaultValue="overview">
               <TabsList>
                 <TabsTrigger value="overview">Overview</TabsTrigger>
-                <TabsTrigger value="assignments">Assignments ({assetAssignments.length})</TabsTrigger>
-                <TabsTrigger value="verification">Verification ({assetVerif.length})</TabsTrigger>
-                <TabsTrigger value="maintenance">Maintenance ({assetMaint.length})</TabsTrigger>
-                <TabsTrigger value="borrows">Borrows ({assetBorrows.length})</TabsTrigger>
-                <TabsTrigger value="discrepancies">Discrepancies ({assetDisc.length})</TabsTrigger>
+                <TabsTrigger value="assignments">Assignments ({data.assignments.length})</TabsTrigger>
+                <TabsTrigger value="verification">Verification ({data.verificationTasks.length})</TabsTrigger>
+                <TabsTrigger value="maintenance">Maintenance ({data.maintenanceRecords.length})</TabsTrigger>
+                <TabsTrigger value="borrows">Borrows ({data.borrowRequests.length})</TabsTrigger>
+                <TabsTrigger value="discrepancies">Discrepancies ({data.discrepancies.length})</TabsTrigger>
                 <TabsTrigger value="audit">Audit</TabsTrigger>
               </TabsList>
 
@@ -71,7 +81,7 @@ export default function AssetDetailPage() {
                   {info('Model', asset.model)}
                   {info('Serial Number', asset.serialNumber)}
                   {info('Purchase Date', asset.purchaseDate)}
-                  {info('Purchase Price', `$${asset.purchasePrice.toLocaleString()}`)}
+                  {info('Purchase Price', asset.purchasePrice ? `$${asset.purchasePrice.toLocaleString()}` : null)}
                   {info('Warranty Expiry', asset.warrantyExpiry)}
                   {info('Last Verified', asset.lastVerifiedDate)}
                   {info('Next Verification', asset.nextVerificationDue)}
@@ -83,12 +93,12 @@ export default function AssetDetailPage() {
                 <Card className="rounded-xl overflow-hidden"><Table><TableHeader><TableRow>
                   <TableHead>Type</TableHead><TableHead>To</TableHead><TableHead>Date</TableHead><TableHead>Status</TableHead>
                 </TableRow></TableHeader><TableBody>
-                  {assetAssignments.length === 0 ? <TableRow><TableCell colSpan={4} className="text-center py-8 text-muted-foreground">No assignments</TableCell></TableRow> :
-                  assetAssignments.map(a => <TableRow key={a.id}>
-                    <TableCell><StatusBadge status={a.type} /></TableCell>
-                    <TableCell>{getUserById(a.toUserId)?.name}</TableCell>
-                    <TableCell className="text-sm">{a.effectiveDate}</TableCell>
-                    <TableCell><StatusBadge status={a.status} /></TableCell>
+                  {data.assignments.length === 0 ? <TableRow><TableCell colSpan={4} className="text-center py-8 text-muted-foreground">No assignments</TableCell></TableRow> :
+                  data.assignments.map(assignment => <TableRow key={assignment.id}>
+                    <TableCell><StatusBadge status={assignment.type} /></TableCell>
+                    <TableCell>{assignment.toUserName}</TableCell>
+                    <TableCell className="text-sm">{assignment.effectiveDate}</TableCell>
+                    <TableCell><StatusBadge status={assignment.status} /></TableCell>
                   </TableRow>)}
                 </TableBody></Table></Card>
               </TabsContent>
@@ -97,12 +107,12 @@ export default function AssetDetailPage() {
                 <Card className="rounded-xl overflow-hidden"><Table><TableHeader><TableRow>
                   <TableHead>Campaign</TableHead><TableHead>Result</TableHead><TableHead>Verified</TableHead><TableHead>Notes</TableHead>
                 </TableRow></TableHeader><TableBody>
-                  {assetVerif.length === 0 ? <TableRow><TableCell colSpan={4} className="text-center py-8 text-muted-foreground">No verifications</TableCell></TableRow> :
-                  assetVerif.map(v => <TableRow key={v.id}>
-                    <TableCell className="text-sm">{v.campaignId}</TableCell>
-                    <TableCell><StatusBadge status={v.result} /></TableCell>
-                    <TableCell className="text-sm">{v.verifiedAt || '—'}</TableCell>
-                    <TableCell className="text-sm text-muted-foreground">{v.notes || '—'}</TableCell>
+                  {data.verificationTasks.length === 0 ? <TableRow><TableCell colSpan={4} className="text-center py-8 text-muted-foreground">No verifications</TableCell></TableRow> :
+                  data.verificationTasks.map(task => <TableRow key={task.id}>
+                    <TableCell className="text-sm">{task.campaignId}</TableCell>
+                    <TableCell><StatusBadge status={task.result} /></TableCell>
+                    <TableCell className="text-sm">{task.verifiedAt || '—'}</TableCell>
+                    <TableCell className="text-sm text-muted-foreground">{task.notes || '—'}</TableCell>
                   </TableRow>)}
                 </TableBody></Table></Card>
               </TabsContent>
@@ -111,12 +121,12 @@ export default function AssetDetailPage() {
                 <Card className="rounded-xl overflow-hidden"><Table><TableHeader><TableRow>
                   <TableHead>Type</TableHead><TableHead>Status</TableHead><TableHead>Condition</TableHead><TableHead>Date</TableHead>
                 </TableRow></TableHeader><TableBody>
-                  {assetMaint.length === 0 ? <TableRow><TableCell colSpan={4} className="text-center py-8 text-muted-foreground">No maintenance records</TableCell></TableRow> :
-                  assetMaint.map(m => <TableRow key={m.id}>
-                    <TableCell className="text-sm">{m.type}</TableCell>
-                    <TableCell><StatusBadge status={m.status} /></TableCell>
-                    <TableCell><StatusBadge status={m.techCondition} /></TableCell>
-                    <TableCell className="text-sm">{m.scheduledDate}</TableCell>
+                  {data.maintenanceRecords.length === 0 ? <TableRow><TableCell colSpan={4} className="text-center py-8 text-muted-foreground">No maintenance records</TableCell></TableRow> :
+                  data.maintenanceRecords.map(record => <TableRow key={record.id}>
+                    <TableCell className="text-sm">{record.type}</TableCell>
+                    <TableCell><StatusBadge status={record.status} /></TableCell>
+                    <TableCell><StatusBadge status={record.techCondition} /></TableCell>
+                    <TableCell className="text-sm">{record.scheduledDate}</TableCell>
                   </TableRow>)}
                 </TableBody></Table></Card>
               </TabsContent>
@@ -125,12 +135,12 @@ export default function AssetDetailPage() {
                 <Card className="rounded-xl overflow-hidden"><Table><TableHeader><TableRow>
                   <TableHead>Requester</TableHead><TableHead>Purpose</TableHead><TableHead>Dates</TableHead><TableHead>Status</TableHead>
                 </TableRow></TableHeader><TableBody>
-                  {assetBorrows.length === 0 ? <TableRow><TableCell colSpan={4} className="text-center py-8 text-muted-foreground">No borrow requests</TableCell></TableRow> :
-                  assetBorrows.map(b => <TableRow key={b.id}>
-                    <TableCell className="text-sm">{b.requesterName}</TableCell>
-                    <TableCell className="text-sm">{b.purpose}</TableCell>
-                    <TableCell className="text-xs text-muted-foreground">{b.borrowDate} — {b.returnDate}</TableCell>
-                    <TableCell><StatusBadge status={b.status} /></TableCell>
+                  {data.borrowRequests.length === 0 ? <TableRow><TableCell colSpan={4} className="text-center py-8 text-muted-foreground">No borrow requests</TableCell></TableRow> :
+                  data.borrowRequests.map(request => <TableRow key={request.id}>
+                    <TableCell className="text-sm">{request.requesterName}</TableCell>
+                    <TableCell className="text-sm">{request.purpose}</TableCell>
+                    <TableCell className="text-xs text-muted-foreground">{request.borrowDate} — {request.returnDate}</TableCell>
+                    <TableCell><StatusBadge status={request.status} /></TableCell>
                   </TableRow>)}
                 </TableBody></Table></Card>
               </TabsContent>
@@ -139,21 +149,21 @@ export default function AssetDetailPage() {
                 <Card className="rounded-xl overflow-hidden"><Table><TableHeader><TableRow>
                   <TableHead>Type</TableHead><TableHead>Severity</TableHead><TableHead>Status</TableHead><TableHead>Expected</TableHead><TableHead>Observed</TableHead>
                 </TableRow></TableHeader><TableBody>
-                  {assetDisc.length === 0 ? <TableRow><TableCell colSpan={5} className="text-center py-8 text-muted-foreground">No discrepancies</TableCell></TableRow> :
-                  assetDisc.map(d => <TableRow key={d.id}>
-                    <TableCell className="text-sm capitalize">{d.type}</TableCell>
-                    <TableCell><StatusBadge status={d.severity} /></TableCell>
-                    <TableCell><StatusBadge status={d.status} /></TableCell>
-                    <TableCell className="text-sm">{d.expectedValue}</TableCell>
-                    <TableCell className="text-sm">{d.observedValue}</TableCell>
+                  {data.discrepancies.length === 0 ? <TableRow><TableCell colSpan={5} className="text-center py-8 text-muted-foreground">No discrepancies</TableCell></TableRow> :
+                  data.discrepancies.map(discrepancy => <TableRow key={discrepancy.id}>
+                    <TableCell className="text-sm capitalize">{discrepancy.type}</TableCell>
+                    <TableCell><StatusBadge status={discrepancy.severity} /></TableCell>
+                    <TableCell><StatusBadge status={discrepancy.status} /></TableCell>
+                    <TableCell className="text-sm">{discrepancy.expectedValue}</TableCell>
+                    <TableCell className="text-sm">{discrepancy.observedValue}</TableCell>
                   </TableRow>)}
                 </TableBody></Table></Card>
               </TabsContent>
 
               <TabsContent value="audit">
                 <Card className="rounded-xl p-4">
-                  <Timeline items={assetLogs.map(l => ({ id: l.id, title: `${l.actor} ${l.action.toLowerCase()}`, description: l.details, date: new Date(l.timestamp).toLocaleString() }))} />
-                  {assetLogs.length === 0 && <p className="text-center py-8 text-muted-foreground">No audit logs</p>}
+                  <Timeline items={data.auditLogs.map(log => ({ id: log.id, title: `${log.actor} ${log.action.toLowerCase()}`, description: log.details, date: new Date(log.timestamp).toLocaleString() }))} />
+                  {data.auditLogs.length === 0 && <p className="text-center py-8 text-muted-foreground">No audit logs</p>}
                 </Card>
               </TabsContent>
             </Tabs>
@@ -163,10 +173,10 @@ export default function AssetDetailPage() {
             <Card className="rounded-xl">
               <CardHeader className="pb-3"><CardTitle className="text-sm">Quick Facts</CardTitle></CardHeader>
               <CardContent className="space-y-4">
-                {info('Department', dept?.name)}
-                {info('Assigned To', assignee?.name)}
-                {info('Location', loc?.name)}
-                {info('Category', category?.name)}
+                {info('Department', asset.departmentName)}
+                {info('Assigned To', asset.assignedToName)}
+                {info('Location', asset.locationName)}
+                {info('Category', asset.categoryName)}
                 {info('Condition', asset.condition)}
                 {info('Last Verified', asset.lastVerifiedDate)}
                 {info('Next Due', asset.nextVerificationDue)}

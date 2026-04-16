@@ -1,0 +1,8 @@
+package asset.management.last_resolve.repository;
+
+import asset.management.last_resolve.entity.Location;
+import java.util.UUID;
+import org.springframework.data.jpa.repository.JpaRepository;
+
+public interface LocationRepository extends JpaRepository<Location, UUID> {
+}

@@ -1,4 +1,6 @@
-import { useState } from 'react';
+import type { ElementType, ReactNode } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
 import { PageHeader } from '@/components/PageHeader';
 import { StatusBadge } from '@/components/StatusBadge';
@@ -11,44 +13,81 @@ import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { User, Mail, Phone, Building2, MapPin, Calendar, Shield, Clock, Edit2, Save, KeyRound, Box, HandCoins } from 'lucide-react';
-import { departments, assets, borrowRequests, auditLogs } from '@/data/mock-data';
+import { api, HttpError } from '@/lib/api';
 import { toast } from 'sonner';
 
 export default function ProfilePage() {
-  const { user } = useAuth();
+  const queryClient = useQueryClient();
+  const { user, updateUser } = useAuth();
   const [editing, setEditing] = useState(false);
-  const [form, setForm] = useState({ phone: user?.phone || '', notes: '' });
+  const [form, setForm] = useState({ phone: '', bio: '' });
+  const [passwordForm, setPasswordForm] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' });
 
-  if (!user) return null;
+  const profileQuery = useQuery({ queryKey: ['profile'], queryFn: api.profile.get });
+  const assetsQuery = useQuery({ queryKey: ['profile-assets'], queryFn: () => api.assets.list({ page: 0, size: 100 }) });
+  const borrowQuery = useQuery({ queryKey: ['profile-borrows'], queryFn: () => api.borrowRequests.list({ page: 0, size: 100 }) });
+  const notificationsQuery = useQuery({ queryKey: ['notifications'], queryFn: api.notifications.list });
 
-  const dept = departments.find(d => d.id === user.departmentId);
-  const myAssets = assets.filter(a => a.assignedToId === user.id).slice(0, 5);
-  const myBorrows = borrowRequests.filter(b => b.requesterId === user.id).slice(0, 5);
-  const myActivity = auditLogs.filter(l => l.actor === user.name).slice(0, 10);
+  const profile = profileQuery.data ?? user;
+
+  useEffect(() => {
+    if (!profile) return;
+    setForm({ phone: profile.phone ?? '', bio: profile.bio ?? '' });
+  }, [profile]);
+
+  const updateMutation = useMutation({
+    mutationFn: () => api.profile.update(form),
+    onSuccess: (updatedUser) => {
+      updateUser(updatedUser);
+      queryClient.invalidateQueries({ queryKey: ['profile'] });
+      setEditing(false);
+      toast.success('Profile updated successfully');
+    },
+    onError: (error) => toast.error(error instanceof HttpError ? error.message : 'Unable to update profile'),
+  });
+
+  const passwordMutation = useMutation({
+    mutationFn: () => api.auth.changePassword(passwordForm),
+    onSuccess: () => {
+      setPasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
+      toast.success('Password updated successfully');
+    },
+    onError: (error) => toast.error(error instanceof HttpError ? error.message : 'Unable to change password'),
+  });
+
+  const myAssets = useMemo(
+    () => (assetsQuery.data?.items ?? []).filter(asset => asset.assignedToId === profile?.id).slice(0, 5),
+    [assetsQuery.data, profile?.id],
+  );
+  const myBorrows = useMemo(
+    () => (borrowQuery.data?.items ?? []).filter(request => request.requesterId === profile?.id).slice(0, 5),
+    [borrowQuery.data, profile?.id],
+  );
+  const myActivity = useMemo(
+    () => (notificationsQuery.data ?? []).slice(0, 10),
+    [notificationsQuery.data],
+  );
+
+  if (!profile) return null;
 
   const handleSave = () => {
-    setEditing(false);
-    toast.success('Profile updated successfully');
+    updateMutation.mutate();
   };
 
-  const infoRow = (icon: React.ElementType, label: string, value: string | React.ReactNode) => {
-    const Icon = icon;
-    return (
-      <div className="flex items-start gap-3 py-2.5">
-        <Icon className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
-        <div>
-          <p className="text-xs text-muted-foreground">{label}</p>
-          <div className="text-sm font-medium">{value}</div>
-        </div>
+  const infoRow = (Icon: ElementType, label: string, value: string | ReactNode) => (
+    <div className="flex items-start gap-3 py-2.5">
+      <Icon className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
+      <div>
+        <p className="text-xs text-muted-foreground">{label}</p>
+        <div className="text-sm font-medium">{value}</div>
       </div>
-    );
-  };
+    </div>
+  );
 
   return (
     <div>
       <PageHeader title="My Profile" description="Manage your account information and preferences" />
       <div className="p-6 space-y-6">
-        {/* Profile Header */}
         <Card className="rounded-xl">
           <CardContent className="pt-6">
             <div className="flex items-start gap-5">
@@ -57,12 +96,12 @@ export default function ProfilePage() {
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-3">
-                  <h2 className="text-xl font-bold">{user.name}</h2>
-                  <StatusBadge status={user.status} />
-                  <Badge variant="outline" className="text-xs capitalize">{user.role}</Badge>
+                  <h2 className="text-xl font-bold">{profile.name}</h2>
+                  <StatusBadge status={profile.status} />
+                  <Badge variant="outline" className="text-xs capitalize">{profile.role}</Badge>
                 </div>
-                <p className="text-sm text-muted-foreground mt-1">@{user.username} · {user.email}</p>
-                <p className="text-sm text-muted-foreground">{dept?.name || 'Unknown Department'} · {dept?.location}</p>
+                <p className="text-sm text-muted-foreground mt-1">@{profile.username} · {profile.email}</p>
+                <p className="text-sm text-muted-foreground">{profile.departmentName}</p>
               </div>
               <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setEditing(!editing)}>
                 <Edit2 className="h-3.5 w-3.5" />{editing ? 'Cancel' : 'Edit Profile'}
@@ -87,16 +126,16 @@ export default function ProfilePage() {
                 <CardContent className="space-y-2">
                   {myAssets.length === 0 ? (
                     <p className="text-sm text-muted-foreground py-4 text-center">No assets assigned</p>
-                  ) : myAssets.map(a => (
-                    <div key={a.id} className="flex items-center justify-between py-2 border-b last:border-b-0">
+                  ) : myAssets.map(asset => (
+                    <div key={asset.id} className="flex items-center justify-between py-2 border-b last:border-b-0">
                       <div className="flex items-center gap-2">
                         <Box className="h-4 w-4 text-muted-foreground" />
                         <div>
-                          <p className="text-sm font-medium">{a.name}</p>
-                          <p className="text-xs text-muted-foreground">{a.code}</p>
+                          <p className="text-sm font-medium">{asset.name}</p>
+                          <p className="text-xs text-muted-foreground">{asset.code}</p>
                         </div>
                       </div>
-                      <StatusBadge status={a.lifecycle} />
+                      <StatusBadge status={asset.lifecycle} />
                     </div>
                   ))}
                 </CardContent>
@@ -106,16 +145,16 @@ export default function ProfilePage() {
                 <CardContent className="space-y-2">
                   {myBorrows.length === 0 ? (
                     <p className="text-sm text-muted-foreground py-4 text-center">No borrow requests</p>
-                  ) : myBorrows.map(b => (
-                    <div key={b.id} className="flex items-center justify-between py-2 border-b last:border-b-0">
+                  ) : myBorrows.map(request => (
+                    <div key={request.id} className="flex items-center justify-between py-2 border-b last:border-b-0">
                       <div className="flex items-center gap-2">
                         <HandCoins className="h-4 w-4 text-muted-foreground" />
                         <div>
-                          <p className="text-sm font-medium">{b.assetName}</p>
-                          <p className="text-xs text-muted-foreground">{b.purpose}</p>
+                          <p className="text-sm font-medium">{request.assetName}</p>
+                          <p className="text-xs text-muted-foreground">{request.purpose}</p>
                         </div>
                       </div>
-                      <StatusBadge status={b.status} />
+                      <StatusBadge status={request.status} />
                     </div>
                   ))}
                 </CardContent>
@@ -130,33 +169,33 @@ export default function ProfilePage() {
                   <div className="space-y-4">
                     <div>
                       <Label>Full Name</Label>
-                      <Input value={user.name} disabled className="mt-1.5" />
+                      <Input value={profile.name} disabled className="mt-1.5" />
                       <p className="text-xs text-muted-foreground mt-1">Contact admin to change your name</p>
                     </div>
                     <div>
                       <Label>Email</Label>
-                      <Input value={user.email} disabled className="mt-1.5" />
+                      <Input value={profile.email} disabled className="mt-1.5" />
                     </div>
                     <div>
                       <Label>Phone</Label>
-                      <Input value={form.phone} onChange={e => setForm(p => ({ ...p, phone: e.target.value }))} className="mt-1.5" placeholder="+1-555-0000" />
+                      <Input value={form.phone} onChange={e => setForm(current => ({ ...current, phone: e.target.value }))} className="mt-1.5" placeholder="+1-555-0000" />
                     </div>
                     <div>
                       <Label>Bio / Notes</Label>
-                      <Textarea value={form.notes} onChange={e => setForm(p => ({ ...p, notes: e.target.value }))} className="mt-1.5" placeholder="A brief note about yourself..." rows={3} />
+                      <Textarea value={form.bio} onChange={e => setForm(current => ({ ...current, bio: e.target.value }))} className="mt-1.5" placeholder="A brief note about yourself..." rows={3} />
                     </div>
-                    <Button size="sm" className="gap-1.5" onClick={handleSave}><Save className="h-3.5 w-3.5" />Save Changes</Button>
+                    <Button size="sm" className="gap-1.5" onClick={handleSave} disabled={updateMutation.isPending}><Save className="h-3.5 w-3.5" />Save Changes</Button>
                   </div>
                 ) : (
                   <>
-                    {infoRow(User, 'Full Name', user.name)}
-                    {infoRow(Mail, 'Email', user.email)}
-                    {infoRow(Phone, 'Phone', user.phone || '—')}
-                    {infoRow(Shield, 'Role', <span className="capitalize">{user.role}</span>)}
-                    {infoRow(Building2, 'Department', dept?.name || '—')}
-                    {infoRow(MapPin, 'Location', dept?.location || '—')}
-                    {infoRow(Calendar, 'Joined', user.createdAt)}
-                    {infoRow(Clock, 'Last Login', 'Today at 9:15 AM')}
+                    {infoRow(User, 'Full Name', profile.name)}
+                    {infoRow(Mail, 'Email', profile.email)}
+                    {infoRow(Phone, 'Phone', profile.phone || '—')}
+                    {infoRow(Shield, 'Role', <span className="capitalize">{profile.role}</span>)}
+                    {infoRow(Building2, 'Department', profile.departmentName || '—')}
+                    {infoRow(MapPin, 'Location', profile.departmentName || '—')}
+                    {infoRow(Calendar, 'Joined', profile.createdAt)}
+                    {infoRow(Clock, 'Last Login', profile.lastLoginAt || '—')}
                   </>
                 )}
               </CardContent>
@@ -171,15 +210,15 @@ export default function ProfilePage() {
                   <p className="text-sm text-muted-foreground py-4 text-center">No recent activity</p>
                 ) : (
                   <div className="space-y-0">
-                    {myActivity.map((log, i) => (
-                      <div key={log.id} className="relative flex gap-4 pb-4 last:pb-0">
-                        {i < myActivity.length - 1 && <div className="absolute left-[11px] top-7 h-full w-px bg-border" />}
+                    {myActivity.map((item, index) => (
+                      <div key={item.id} className="relative flex gap-4 pb-4 last:pb-0">
+                        {index < myActivity.length - 1 && <div className="absolute left-[11px] top-7 h-full w-px bg-border" />}
                         <div className="relative z-10 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border bg-card">
                           <div className="h-2 w-2 rounded-full bg-muted-foreground" />
                         </div>
                         <div className="flex-1 pt-0.5">
-                          <p className="text-sm">{log.details}</p>
-                          <p className="text-xs text-muted-foreground">{new Date(log.timestamp).toLocaleString()}</p>
+                          <p className="text-sm">{item.message}</p>
+                          <p className="text-xs text-muted-foreground">{new Date(item.timestamp).toLocaleString()}</p>
                         </div>
                       </div>
                     ))}
@@ -196,18 +235,18 @@ export default function ProfilePage() {
                 <div>
                   <Label>Change Password</Label>
                   <div className="space-y-2 mt-2">
-                    <Input type="password" placeholder="Current password" />
-                    <Input type="password" placeholder="New password" />
-                    <Input type="password" placeholder="Confirm new password" />
+                    <Input type="password" value={passwordForm.currentPassword} onChange={e => setPasswordForm(current => ({ ...current, currentPassword: e.target.value }))} placeholder="Current password" />
+                    <Input type="password" value={passwordForm.newPassword} onChange={e => setPasswordForm(current => ({ ...current, newPassword: e.target.value }))} placeholder="New password" />
+                    <Input type="password" value={passwordForm.confirmPassword} onChange={e => setPasswordForm(current => ({ ...current, confirmPassword: e.target.value }))} placeholder="Confirm new password" />
                   </div>
-                  <Button size="sm" className="mt-3 gap-1.5"><KeyRound className="h-3.5 w-3.5" />Update Password</Button>
+                  <Button size="sm" className="mt-3 gap-1.5" onClick={() => passwordMutation.mutate()} disabled={passwordMutation.isPending}><KeyRound className="h-3.5 w-3.5" />Update Password</Button>
                 </div>
                 <div className="border-t pt-4">
                   <p className="text-sm font-medium">Session Information</p>
                   <div className="mt-2 space-y-1 text-sm text-muted-foreground">
-                    <p>Current session started: Today at 9:15 AM</p>
-                    <p>IP Address: 192.168.1.100</p>
-                    <p>Browser: Chrome 124</p>
+                    <p>Last login: {profile.lastLoginAt ? new Date(profile.lastLoginAt).toLocaleString() : 'Unknown'}</p>
+                    <p>Current role: {profile.role}</p>
+                    <p>Department: {profile.departmentName}</p>
                   </div>
                 </div>
               </CardContent>

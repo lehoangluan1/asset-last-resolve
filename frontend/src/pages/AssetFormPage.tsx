@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
 import { PageHeader } from '@/components/PageHeader';
 import { Button } from '@/components/ui/button';
@@ -8,55 +9,118 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { assets, departments, categories, locations } from '@/data/mock-data';
+import { api, HttpError } from '@/lib/api';
 import { toast } from 'sonner';
 import { ArrowLeft, Save } from 'lucide-react';
+
+const createDefaultCode = () => `AST-${String(2000 + Math.floor(Math.random() * 7000))}`;
 
 export default function AssetFormPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const existing = id ? assets.find(a => a.id === id) : null;
-  const isEdit = !!existing;
+  const queryClient = useQueryClient();
+  const isEdit = !!id;
+
+  const assetQuery = useQuery({
+    queryKey: ['asset-detail', id],
+    queryFn: () => api.assets.detail(id!),
+    enabled: isEdit,
+  });
+  const departmentsQuery = useQuery({ queryKey: ['reference', 'departments'], queryFn: api.reference.departments });
+  const categoriesQuery = useQuery({ queryKey: ['reference', 'categories'], queryFn: api.reference.categories });
+  const locationsQuery = useQuery({ queryKey: ['reference', 'locations'], queryFn: api.reference.locations });
 
   const [form, setForm] = useState({
-    name: existing?.name || '',
-    code: existing?.code || `AST-${String(2000 + Math.floor(Math.random() * 1000))}`,
-    categoryId: existing?.categoryId || '',
-    departmentId: existing?.departmentId || '',
-    locationId: existing?.locationId || '',
-    brand: existing?.brand || '',
-    model: existing?.model || '',
-    serialNumber: existing?.serialNumber || '',
-    purchaseDate: existing?.purchaseDate || '',
-    purchasePrice: existing?.purchasePrice?.toString() || '',
-    warrantyExpiry: existing?.warrantyExpiry || '',
-    borrowable: existing?.borrowable || false,
-    notes: existing?.notes || '',
-    condition: existing?.condition || 'good',
+    name: '',
+    code: createDefaultCode(),
+    categoryId: '',
+    departmentId: '',
+    locationId: '',
+    brand: '',
+    model: '',
+    serialNumber: '',
+    purchaseDate: '',
+    purchasePrice: '',
+    warrantyExpiry: '',
+    borrowable: false,
+    notes: '',
+    condition: 'good',
+    description: '',
   });
 
-  const update = (key: string, value: string | boolean) => setForm(f => ({ ...f, [key]: value }));
+  useEffect(() => {
+    const asset = assetQuery.data?.asset;
+    if (!asset) return;
+    setForm({
+      name: asset.name,
+      code: asset.code,
+      categoryId: asset.categoryId,
+      departmentId: asset.departmentId,
+      locationId: asset.locationId,
+      brand: asset.brand,
+      model: asset.model,
+      serialNumber: asset.serialNumber,
+      purchaseDate: asset.purchaseDate ?? '',
+      purchasePrice: asset.purchasePrice?.toString() ?? '',
+      warrantyExpiry: asset.warrantyExpiry ?? '',
+      borrowable: asset.borrowable,
+      notes: asset.notes,
+      condition: asset.condition,
+      description: asset.description,
+    });
+  }, [assetQuery.data]);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const mutation = useMutation({
+    mutationFn: async () => {
+      const payload = {
+        ...form,
+        purchasePrice: form.purchasePrice ? Number(form.purchasePrice) : null,
+      };
+      if (isEdit && id) {
+        return api.assets.update(id, payload);
+      }
+      return api.assets.create(payload);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['assets'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      if (id) {
+        queryClient.invalidateQueries({ queryKey: ['asset-detail', id] });
+      }
+      toast.success(isEdit ? 'Asset updated successfully' : 'Asset created successfully');
+      navigate('/assets');
+    },
+    onError: (error) => {
+      const message = error instanceof HttpError ? error.message : 'Unable to save asset';
+      toast.error(message);
+    },
+  });
+
+  const update = (key: string, value: string | boolean) => setForm(current => ({ ...current, [key]: value }));
+
+  const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
-    if (!form.name.trim() || !form.categoryId || !form.departmentId) {
-      toast.error('Please fill in required fields');
+    if (!form.name.trim() || !form.categoryId || !form.departmentId || !form.locationId) {
+      toast.error('Please fill in all required fields');
       return;
     }
-    toast.success(isEdit ? 'Asset updated successfully' : 'Asset created successfully');
-    navigate('/assets');
+    mutation.mutate();
   };
 
-  const field = (label: string, key: string, type = 'text', required = false) => (
+  const field = (label: string, key: keyof typeof form, type = 'text', required = false) => (
     <div className="space-y-2">
       <Label>{label}{required && <span className="text-destructive ml-0.5">*</span>}</Label>
-      <Input type={type} value={(form as Record<string, unknown>)[key] as string} onChange={e => update(key, e.target.value)} />
+      <Input type={type} value={form[key] as string} onChange={e => update(key, e.target.value)} />
     </div>
   );
 
+  if (isEdit && assetQuery.isLoading) {
+    return <div className="p-6 text-sm text-muted-foreground">Loading asset...</div>;
+  }
+
   return (
     <div>
-      <PageHeader title={isEdit ? `Edit ${existing?.name}` : 'New Asset'} description={isEdit ? `Editing ${existing?.code}` : 'Register a new asset'}>
+      <PageHeader title={isEdit ? `Edit ${assetQuery.data?.asset.name ?? 'Asset'}` : 'New Asset'} description={isEdit ? `Editing ${assetQuery.data?.asset.code ?? ''}` : 'Register a new asset'}>
         <Button size="sm" variant="ghost" onClick={() => navigate(-1)}><ArrowLeft className="h-4 w-4 mr-1.5" />Back</Button>
       </PageHeader>
       <form onSubmit={handleSubmit} className="p-6 max-w-4xl space-y-6">
@@ -67,9 +131,9 @@ export default function AssetFormPage() {
             {field('Asset Code', 'code', 'text', true)}
             <div className="space-y-2">
               <Label>Category<span className="text-destructive ml-0.5">*</span></Label>
-              <Select value={form.categoryId} onValueChange={v => update('categoryId', v)}>
+              <Select value={form.categoryId} onValueChange={value => update('categoryId', value)}>
                 <SelectTrigger><SelectValue placeholder="Select category" /></SelectTrigger>
-                <SelectContent>{categories.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent>
+                <SelectContent>{categoriesQuery.data?.map(category => <SelectItem key={category.id} value={category.id}>{category.name}</SelectItem>)}</SelectContent>
               </Select>
             </div>
             {field('Brand', 'brand')}
@@ -83,16 +147,16 @@ export default function AssetFormPage() {
           <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>Department<span className="text-destructive ml-0.5">*</span></Label>
-              <Select value={form.departmentId} onValueChange={v => update('departmentId', v)}>
+              <Select value={form.departmentId} onValueChange={value => update('departmentId', value)}>
                 <SelectTrigger><SelectValue placeholder="Select department" /></SelectTrigger>
-                <SelectContent>{departments.map(d => <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>)}</SelectContent>
+                <SelectContent>{departmentsQuery.data?.map(department => <SelectItem key={department.id} value={department.id}>{department.name}</SelectItem>)}</SelectContent>
               </Select>
             </div>
             <div className="space-y-2">
-              <Label>Location</Label>
-              <Select value={form.locationId} onValueChange={v => update('locationId', v)}>
+              <Label>Location<span className="text-destructive ml-0.5">*</span></Label>
+              <Select value={form.locationId} onValueChange={value => update('locationId', value)}>
                 <SelectTrigger><SelectValue placeholder="Select location" /></SelectTrigger>
-                <SelectContent>{locations.map(l => <SelectItem key={l.id} value={l.id}>{l.name}</SelectItem>)}</SelectContent>
+                <SelectContent>{locationsQuery.data?.map(location => <SelectItem key={location.id} value={location.id}>{location.name}</SelectItem>)}</SelectContent>
               </Select>
             </div>
           </CardContent>
@@ -110,9 +174,26 @@ export default function AssetFormPage() {
         <Card className="rounded-xl">
           <CardHeader><CardTitle className="text-sm">Settings</CardTitle></CardHeader>
           <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label>Condition</Label>
+              <Select value={form.condition} onValueChange={value => update('condition', value)}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="excellent">Excellent</SelectItem>
+                  <SelectItem value="good">Good</SelectItem>
+                  <SelectItem value="fair">Fair</SelectItem>
+                  <SelectItem value="poor">Poor</SelectItem>
+                  <SelectItem value="non-functional">Non-functional</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
             <div className="flex items-center gap-3">
-              <Switch checked={form.borrowable} onCheckedChange={v => update('borrowable', v)} />
+              <Switch checked={form.borrowable} onCheckedChange={value => update('borrowable', value)} />
               <Label>Allow borrowing</Label>
+            </div>
+            <div className="space-y-2">
+              <Label>Description</Label>
+              <Textarea value={form.description} onChange={e => update('description', e.target.value)} rows={3} />
             </div>
             <div className="space-y-2">
               <Label>Notes</Label>
@@ -122,7 +203,7 @@ export default function AssetFormPage() {
         </Card>
 
         <div className="flex gap-3">
-          <Button type="submit"><Save className="h-4 w-4 mr-1.5" />{isEdit ? 'Update' : 'Create'} Asset</Button>
+          <Button type="submit" disabled={mutation.isPending}><Save className="h-4 w-4 mr-1.5" />{mutation.isPending ? 'Saving...' : isEdit ? 'Update' : 'Create'} Asset</Button>
           <Button type="button" variant="outline" onClick={() => navigate(-1)}>Cancel</Button>
         </div>
       </form>
