@@ -1,4 +1,4 @@
-# Asset Management Final
+# Asset Management Final - V1.2
 
 Asset Management Final is a full-stack monorepo for a role-based asset lifecycle platform built with Spring Boot, PostgreSQL, Flyway, React, Vite, and Playwright.
 
