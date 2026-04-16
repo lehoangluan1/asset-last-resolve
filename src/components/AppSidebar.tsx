@@ -1,7 +1,7 @@
 import { Link, useLocation } from 'react-router-dom';
 import {
-  LayoutDashboard, CalendarCheck, Map, ShoppingCart, ChefHat,
-  Receipt, UtensilsCrossed, Package, ChevronLeft, ChevronRight
+  LayoutDashboard, Box, ArrowLeftRight, HandCoins, ClipboardCheck,
+  AlertTriangle, Wrench, Trash2, BarChart3, Settings, Users, ChevronLeft, ChevronRight, Shield
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useState } from 'react';
@@ -14,25 +14,38 @@ const navGroups = [
     ],
   },
   {
-    label: 'Front of House',
+    label: 'Asset Operations',
     items: [
-      { label: 'Reservations & Tables', icon: CalendarCheck, path: '/reservations' },
-      { label: 'Floor Map', icon: Map, path: '/floor-map' },
+      { label: 'Assets', icon: Box, path: '/assets' },
+      { label: 'Assignments & Transfers', icon: ArrowLeftRight, path: '/assignments' },
+      { label: 'Borrow Requests', icon: HandCoins, path: '/borrow-requests' },
     ],
   },
   {
-    label: 'Operations',
+    label: 'Verification',
     items: [
-      { label: 'Orders', icon: ShoppingCart, path: '/orders' },
-      { label: 'Kitchen', icon: ChefHat, path: '/kitchen' },
-      { label: 'Billing', icon: Receipt, path: '/billing' },
+      { label: 'Verification Campaigns', icon: ClipboardCheck, path: '/verification' },
+      { label: 'Discrepancies', icon: AlertTriangle, path: '/discrepancies' },
     ],
   },
   {
-    label: 'Management',
+    label: 'Support',
     items: [
-      { label: 'Menu', icon: UtensilsCrossed, path: '/menu' },
-      { label: 'Inventory', icon: Package, path: '/inventory' },
+      { label: 'Maintenance', icon: Wrench, path: '/maintenance' },
+      { label: 'Disposal', icon: Trash2, path: '/disposal' },
+    ],
+  },
+  {
+    label: 'Intelligence',
+    items: [
+      { label: 'Reports & Audit', icon: BarChart3, path: '/reports' },
+    ],
+  },
+  {
+    label: 'Administration',
+    items: [
+      { label: 'Reference Data', icon: Settings, path: '/admin' },
+      { label: 'User Management', icon: Users, path: '/users' },
     ],
   },
 ];
@@ -48,9 +61,9 @@ export function AppSidebar() {
     )}>
       <div className="flex items-center gap-2 px-4 h-14 border-b shrink-0">
         <div className="h-8 w-8 rounded-lg bg-primary flex items-center justify-center shrink-0">
-          <UtensilsCrossed className="h-4 w-4 text-primary-foreground" />
+          <Shield className="h-4 w-4 text-primary-foreground" />
         </div>
-        {!collapsed && <span className="font-bold text-sm text-foreground tracking-tight">Restaurant</span>}
+        {!collapsed && <span className="font-bold text-sm text-foreground tracking-tight">Asset Mgmt</span>}
       </div>
 
       <nav className="flex-1 overflow-y-auto py-3 px-2 scrollbar-thin">
