@@ -1,24 +1,28 @@
-import { Search, Bell, User } from 'lucide-react';
+import { useAuth } from '@/contexts/AuthContext';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger
-} from '@/components/ui/dropdown-menu';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { Bell, Search, LogOut, User } from 'lucide-react';
+import { toast } from 'sonner';
 
 export function AppHeader() {
+  const { user, logout } = useAuth();
+
+  const handleLogout = () => {
+    logout();
+    toast.success('Logged out successfully');
+  };
+
   return (
-    <header className="flex items-center justify-between border-b bg-card px-6 h-14 shrink-0">
-      <div className="relative w-80">
-        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-        <Input
-          placeholder="Search orders, tables, menu..."
-          className="pl-9 h-9 bg-muted/50 border-0 focus-visible:ring-1"
-        />
+    <header className="h-14 border-b bg-card flex items-center justify-between px-4 gap-4 shrink-0">
+      <div className="relative flex-1 max-w-md">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+        <Input placeholder="Search assets, users, requests..." className="pl-9 h-9 bg-muted/50" />
       </div>
       <div className="flex items-center gap-2">
-        <Button variant="ghost" size="icon" className="relative">
+        <Button variant="ghost" size="icon" className="relative h-9 w-9">
           <Bell className="h-4 w-4" />
-          <span className="absolute -top-0.5 -right-0.5 h-4 w-4 rounded-full bg-destructive text-[10px] font-bold text-destructive-foreground flex items-center justify-center">5</span>
+          <span className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-destructive" />
         </Button>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -26,14 +30,16 @@ export function AppHeader() {
               <div className="h-7 w-7 rounded-full bg-primary/10 flex items-center justify-center">
                 <User className="h-3.5 w-3.5 text-primary" />
               </div>
-              <span className="text-sm font-medium">Manager</span>
+              <div className="text-left hidden sm:block">
+                <p className="text-xs font-medium leading-none">{user?.name || 'User'}</p>
+                <p className="text-[10px] text-muted-foreground capitalize">{user?.role || 'guest'}</p>
+              </div>
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-48">
-            <DropdownMenuItem>Profile</DropdownMenuItem>
-            <DropdownMenuItem>Settings</DropdownMenuItem>
+            <DropdownMenuItem disabled><User className="h-4 w-4 mr-2" />Profile</DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem>Sign out</DropdownMenuItem>
+            <DropdownMenuItem onClick={handleLogout} className="text-destructive"><LogOut className="h-4 w-4 mr-2" />Logout</DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
