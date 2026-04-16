@@ -47,6 +47,10 @@ export interface AssetCategory {
   code: string;
   description: string;
   parentId?: string;
+  borrowableByDefault?: boolean;
+  requiresSerial?: boolean;
+  requiresVerification?: boolean;
+  status?: 'active' | 'inactive';
 }
 
 export interface Location {
@@ -222,4 +226,24 @@ export interface DemoAccount {
   password: string;
   role: UserRole;
   label: string;
+}
+
+// ── Notifications ───────────────────────────────────────────
+export type NotificationType =
+  | 'borrow-pending' | 'borrow-approved' | 'borrow-rejected'
+  | 'asset-overdue' | 'verification-due' | 'verification-assigned'
+  | 'discrepancy-created' | 'maintenance-completed'
+  | 'disposal-review' | 'user-created' | 'asset-transferred' | 'general';
+
+export interface AppNotification {
+  id: string;
+  title: string;
+  message: string;
+  type: NotificationType;
+  entityType?: string;
+  entityId?: string;
+  timestamp: string;
+  read: boolean;
+  actor?: string;
+  priority?: 'normal' | 'high';
 }
