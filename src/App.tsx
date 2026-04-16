@@ -19,6 +19,8 @@ import DisposalPage from "./pages/DisposalPage";
 import ReportsPage from "./pages/ReportsPage";
 import AdminPage from "./pages/AdminPage";
 import UserManagementPage from "./pages/UserManagementPage";
+import ProfilePage from "./pages/ProfilePage";
+import NotificationsPage from "./pages/NotificationsPage";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -59,6 +61,8 @@ const App = () => (
               <Route path="/reports" element={<ReportsPage />} />
               <Route path="/admin" element={<AdminPage />} />
               <Route path="/users" element={<UserManagementPage />} />
+              <Route path="/profile" element={<ProfilePage />} />
+              <Route path="/notifications" element={<NotificationsPage />} />
             </Route>
             <Route path="*" element={<NotFound />} />
           </Routes>

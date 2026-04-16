@@ -3,31 +3,98 @@ import { PageHeader } from '@/components/PageHeader';
 import { StatusBadge } from '@/components/StatusBadge';
 import { PaginationBar } from '@/components/PaginationBar';
 import { usePagination } from '@/hooks/usePagination';
-import { campaigns, verificationTasks } from '@/data/mock-data';
+import { campaigns as seedCampaigns, verificationTasks, departments } from '@/data/mock-data';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Progress } from '@/components/ui/progress';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 import { ChartCard } from '@/components/ChartCard';
 import { Plus } from 'lucide-react';
 import { toast } from 'sonner';
+import type { VerificationCampaign } from '@/types';
+
+const emptyCampaign = {
+  name: '', code: '', year: new Date().getFullYear(), scope: '',
+  departmentIds: [] as string[], startDate: '', dueDate: '',
+  description: '', status: 'draft' as const,
+};
 
 export default function VerificationPage() {
+  const [campaignList, setCampaignList] = useState<VerificationCampaign[]>(seedCampaigns);
   const [selectedCampaign, setSelectedCampaign] = useState<string | null>(null);
-  const campaign = selectedCampaign ? campaigns.find(c => c.id === selectedCampaign) : null;
+  const [open, setOpen] = useState(false);
+  const [form, setForm] = useState(emptyCampaign);
+  const [errors, setErrors] = useState<Record<string, string>>({});
+
+  const campaign = selectedCampaign ? campaignList.find(c => c.id === selectedCampaign) : null;
   const tasks = selectedCampaign ? verificationTasks.filter(t => t.campaignId === selectedCampaign) : [];
   const taskPg = usePagination(tasks);
 
-  const chartData = campaigns.map(c => ({
+  const chartData = campaignList.map(c => ({
     name: c.code, completed: c.completedTasks, remaining: c.totalTasks - c.completedTasks, discrepancies: c.discrepancyCount,
   }));
+
+  const openNew = () => { setForm(emptyCampaign); setErrors({}); setOpen(true); };
+
+  const toggleDept = (deptId: string) => {
+    setForm(p => ({
+      ...p,
+      departmentIds: p.departmentIds.includes(deptId)
+        ? p.departmentIds.filter(d => d !== deptId)
+        : [...p.departmentIds, deptId],
+    }));
+  };
+
+  const validate = () => {
+    const e: Record<string, string> = {};
+    if (!form.name.trim()) e.name = 'Campaign name is required';
+    if (!form.code.trim()) e.code = 'Campaign code is required';
+    if (campaignList.some(c => c.code === form.code.trim())) e.code = 'Code already exists';
+    if (!form.startDate) e.startDate = 'Start date is required';
+    if (!form.dueDate) e.dueDate = 'Due date is required';
+    if (form.departmentIds.length === 0) e.departments = 'Select at least one department';
+    setErrors(e);
+    return Object.keys(e).length === 0;
+  };
+
+  const save = () => {
+    if (!validate()) return;
+    const selectedDepts = departments.filter(d => form.departmentIds.includes(d.id));
+    const scope = form.departmentIds.length === departments.length
+      ? 'All Departments'
+      : selectedDepts.map(d => d.code).join(', ');
+    const newCampaign: VerificationCampaign = {
+      id: `camp-${Date.now()}`,
+      code: form.code.trim(),
+      name: form.name.trim(),
+      year: form.year,
+      scope,
+      departmentIds: form.departmentIds,
+      status: form.status,
+      dueDate: form.dueDate,
+      startDate: form.startDate,
+      totalTasks: form.departmentIds.length * 10,
+      completedTasks: 0,
+      discrepancyCount: 0,
+      createdAt: new Date().toISOString().split('T')[0],
+    };
+    setCampaignList(prev => [...prev, newCampaign]);
+    setOpen(false);
+    toast.success('Verification campaign created');
+  };
 
   return (
     <div>
       <PageHeader title="Verification Campaigns" description="Annual asset verification campaigns and tasks">
-        <Button size="sm" onClick={() => toast.info('Campaign creation coming soon')}><Plus className="h-4 w-4 mr-1.5" />New Campaign</Button>
+        <Button size="sm" onClick={openNew}><Plus className="h-4 w-4 mr-1.5" />New Campaign</Button>
       </PageHeader>
       <div className="p-6 space-y-6">
         {!selectedCampaign ? (
@@ -45,7 +112,7 @@ export default function VerificationPage() {
               </ResponsiveContainer>
             </ChartCard>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {campaigns.map(c => (
+              {campaignList.map(c => (
                 <Card key={c.id} className="rounded-xl shadow-sm cursor-pointer hover:border-primary/50 transition-colors" onClick={() => setSelectedCampaign(c.id)}>
                   <CardHeader className="pb-3">
                     <div className="flex items-center justify-between">
@@ -106,6 +173,79 @@ export default function VerificationPage() {
           </>
         )}
       </div>
+
+      {/* New Campaign Dialog */}
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Create Verification Campaign</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label>Campaign Name <span className="text-destructive">*</span></Label>
+                <Input value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} className="mt-1.5" placeholder="e.g. Q3 2025 Annual Review" />
+                {errors.name && <p className="text-xs text-destructive mt-1">{errors.name}</p>}
+              </div>
+              <div>
+                <Label>Campaign Code <span className="text-destructive">*</span></Label>
+                <Input value={form.code} onChange={e => setForm(p => ({ ...p, code: e.target.value.toUpperCase() }))} className="mt-1.5" placeholder="e.g. VER-2025-Q3" />
+                {errors.code && <p className="text-xs text-destructive mt-1">{errors.code}</p>}
+              </div>
+            </div>
+            <div className="grid grid-cols-3 gap-4">
+              <div>
+                <Label>Year</Label>
+                <Input type="number" value={form.year} onChange={e => setForm(p => ({ ...p, year: parseInt(e.target.value) || new Date().getFullYear() }))} className="mt-1.5" />
+              </div>
+              <div>
+                <Label>Start Date <span className="text-destructive">*</span></Label>
+                <Input type="date" value={form.startDate} onChange={e => setForm(p => ({ ...p, startDate: e.target.value }))} className="mt-1.5" />
+                {errors.startDate && <p className="text-xs text-destructive mt-1">{errors.startDate}</p>}
+              </div>
+              <div>
+                <Label>Due Date <span className="text-destructive">*</span></Label>
+                <Input type="date" value={form.dueDate} onChange={e => setForm(p => ({ ...p, dueDate: e.target.value }))} className="mt-1.5" />
+                {errors.dueDate && <p className="text-xs text-destructive mt-1">{errors.dueDate}</p>}
+              </div>
+            </div>
+            <div>
+              <Label>Status</Label>
+              <Select value={form.status} onValueChange={v => setForm(p => ({ ...p, status: v as any }))}>
+                <SelectTrigger className="mt-1.5"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="draft">Draft</SelectItem>
+                  <SelectItem value="active">Active</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label>Departments <span className="text-destructive">*</span></Label>
+              <p className="text-xs text-muted-foreground mb-2">Select departments to include in this campaign</p>
+              <div className="grid grid-cols-2 gap-2 p-3 rounded-lg border bg-muted/30">
+                {departments.map(d => (
+                  <label key={d.id} className="flex items-center gap-2 py-1 cursor-pointer">
+                    <Checkbox checked={form.departmentIds.includes(d.id)} onCheckedChange={() => toggleDept(d.id)} />
+                    <span className="text-sm">{d.name}</span>
+                  </label>
+                ))}
+              </div>
+              {errors.departments && <p className="text-xs text-destructive mt-1">{errors.departments}</p>}
+              <Button variant="link" size="sm" className="px-0 h-auto mt-1 text-xs" onClick={() => setForm(p => ({ ...p, departmentIds: departments.map(d => d.id) }))}>
+                Select all
+              </Button>
+            </div>
+            <div>
+              <Label>Description / Instructions</Label>
+              <Textarea value={form.description} onChange={e => setForm(p => ({ ...p, description: e.target.value }))} className="mt-1.5" rows={3} placeholder="Instructions for verification coordinators..." />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
+            <Button onClick={save}>Create Campaign</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
