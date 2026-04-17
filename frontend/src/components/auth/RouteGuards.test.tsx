@@ -14,19 +14,23 @@ vi.mock("@/components/AppLayout", () => ({
 }));
 
 describe("RouteGuards", () => {
+  beforeEach(() => {
+    mockedUseAuth.mockReset();
+  });
+
   it("redirects anonymous users away from protected routes", () => {
     mockedUseAuth.mockReturnValue({ isAuthenticated: false, isLoading: false, hasGrant: vi.fn() });
 
     render(
       <MemoryRouter initialEntries={["/private"]}>
         <Routes>
-          <Route path="/login" element={<div>Login Screen</div>} />
+          <Route path="/401" element={<div>Unauthorized</div>} />
           <Route path="/private" element={<ProtectedRoutes />} />
         </Routes>
       </MemoryRouter>,
     );
 
-    expect(screen.getByText("Login Screen")).toBeInTheDocument();
+    expect(screen.getByText("Unauthorized")).toBeInTheDocument();
   });
 
   it("redirects authenticated users away from the auth route", () => {
@@ -50,12 +54,12 @@ describe("RouteGuards", () => {
     render(
       <MemoryRouter initialEntries={["/users"]}>
         <Routes>
-          <Route path="/" element={<div>Home</div>} />
+          <Route path="/403" element={<div>Forbidden</div>} />
           <Route path="/users" element={<RequireGrant grant="users.manage"><div>Users</div></RequireGrant>} />
         </Routes>
       </MemoryRouter>,
     );
 
-    expect(screen.getByText("Home")).toBeInTheDocument();
+    expect(screen.getByText("Forbidden")).toBeInTheDocument();
   });
 });
