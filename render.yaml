@@ -17,17 +17,7 @@ services:
       - key: JWT_SECRET
         sync: false
       - key: DB_URL
-        fromDatabase:
-          name: asset-management-db
-          property: connectionString
-      - key: DB_USERNAME
-        fromDatabase:
-          name: asset-management-db
-          property: user
-      - key: DB_PASSWORD
-        fromDatabase:
-          name: asset-management-db
-          property: password
+        value: postgresql://neondb_owner:npg_tKFH3sduf4BR@ep-proud-sky-a1p8p02w-pooler.ap-southeast-1.aws.neon.tech/asset_management?sslmode=require&channel_binding=require
       - key: CORS_ALLOWED_ORIGINS
         sync: false
       - key: CORS_ALLOWED_ORIGIN_PATTERNS
@@ -52,7 +42,3 @@ services:
       - path: /*
         name: Cache-Control
         value: no-cache
-
-databases:
-  - name: asset-management-db
-    plan: free

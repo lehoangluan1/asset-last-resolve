@@ -11,15 +11,12 @@ import java.util.UUID;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
-import org.springframework.test.context.DynamicPropertyRegistry;
-import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
-import org.testcontainers.containers.PostgreSQLContainer;
 
 @SpringBootTest
 @AutoConfigureMockMvc
-public abstract class IntegrationTestSupport {
+public abstract class RemoteIntegrationTestSupport {
 
     protected static final String ADMIN_USERNAME = "admin";
     protected static final String OFFICER_USERNAME = "officer";
@@ -38,31 +35,11 @@ public abstract class IntegrationTestSupport {
     protected static final String HR_BORROW_REQUEST_ID = "00000000-0000-0000-0000-000000000703";
     protected static final String ACTIVE_CAMPAIGN_ID = "00000000-0000-0000-0000-000000000802";
 
-    @SuppressWarnings("resource")
-    private static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("postgres:16-alpine")
-        .withDatabaseName("asset_management_test")
-        .withUsername("postgres")
-        .withPassword("postgres");
-
-    static {
-        POSTGRES.start();
-    }
-
     @Autowired
     protected MockMvc mockMvc;
 
     @Autowired
     protected ObjectMapper objectMapper;
-
-    @DynamicPropertySource
-    static void registerDatabaseProperties(DynamicPropertyRegistry registry) {
-        registry.add("app.database.url", POSTGRES::getJdbcUrl);
-        registry.add("app.database.username", POSTGRES::getUsername);
-        registry.add("app.database.password", POSTGRES::getPassword);
-        registry.add("spring.datasource.url", POSTGRES::getJdbcUrl);
-        registry.add("spring.datasource.username", POSTGRES::getUsername);
-        registry.add("spring.datasource.password", POSTGRES::getPassword);
-    }
 
     protected String bearer(String token) {
         return "Bearer " + token;

@@ -42,7 +42,7 @@ function cleanup() {
 
 cleanup();
 
-const child = spawn(compose.command, [...baseArgs, "up", "--build", "postgres", "backend", "frontend"], {
+const child = spawn(compose.command, [...baseArgs, "up", "--build", "backend", "frontend"], {
   cwd: rootDir,
   stdio: "inherit",
   shell: false,
