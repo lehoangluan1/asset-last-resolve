@@ -24,13 +24,13 @@ describe("RouteGuards", () => {
     render(
       <MemoryRouter initialEntries={["/private"]}>
         <Routes>
-          <Route path="/401" element={<div>Unauthorized</div>} />
+          <Route path="/login" element={<div>Login Screen</div>} />
           <Route path="/private" element={<ProtectedRoutes />} />
         </Routes>
       </MemoryRouter>,
     );
 
-    expect(screen.getByText("Unauthorized")).toBeInTheDocument();
+    expect(screen.getByText("Login Screen")).toBeInTheDocument();
   });
 
   it("redirects authenticated users away from the auth route", () => {

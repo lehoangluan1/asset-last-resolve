@@ -10,7 +10,7 @@ export function ProtectedRoutes() {
     return <div className="min-h-screen flex items-center justify-center text-sm text-muted-foreground">Loading workspace...</div>;
   }
   if (!isAuthenticated) {
-    return <Navigate to="/401" replace />;
+    return <Navigate to="/login" replace />;
   }
   return <AppLayout />;
 }
