@@ -21,6 +21,7 @@ const statIcons: Record<string, ElementType> = {
   maintenance: Wrench,
   'pending-disposal': Trash2,
   'active-borrows': HandCoins,
+  borrowed: HandCoins,
   'overdue-returns': TimerOff,
 };
 

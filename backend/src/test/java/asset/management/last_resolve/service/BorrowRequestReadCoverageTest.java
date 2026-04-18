@@ -17,6 +17,7 @@ import asset.management.last_resolve.enums.BorrowStatus;
 import asset.management.last_resolve.enums.LifecycleStatus;
 import asset.management.last_resolve.enums.UserRole;
 import asset.management.last_resolve.exception.ForbiddenOperationException;
+import asset.management.last_resolve.mapper.AssetMapper;
 import asset.management.last_resolve.mapper.WorkflowMapper;
 import asset.management.last_resolve.repository.AssetCategoryRepository;
 import asset.management.last_resolve.repository.AssetRepository;
@@ -38,6 +39,7 @@ class BorrowRequestReadCoverageTest {
     @Mock private AssetRepository assetRepository;
     @Mock private AssetCategoryRepository assetCategoryRepository;
     @Mock private DepartmentRepository departmentRepository;
+    @Mock private AssetMapper assetMapper;
     @Mock private WorkflowMapper workflowMapper;
     @Mock private PageResponseFactory pageResponseFactory;
     @Mock private CurrentUserService currentUserService;
@@ -57,6 +59,7 @@ class BorrowRequestReadCoverageTest {
             assetRepository,
             assetCategoryRepository,
             departmentRepository,
+            assetMapper,
             workflowMapper,
             pageResponseFactory,
             currentUserService,

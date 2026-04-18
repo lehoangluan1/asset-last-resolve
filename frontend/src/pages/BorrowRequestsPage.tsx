@@ -1,5 +1,6 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useSearchParams } from 'react-router-dom';
 import { Check, CheckCircle, ChevronsUpDown, Eye, MoreHorizontal, Plus, Search, XCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import { PageHeader } from '@/components/PageHeader';
@@ -21,7 +22,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Textarea } from '@/components/ui/textarea';
 
-const buildInitialForm = (targetType: BorrowTargetType, departmentId?: string) => ({
+const buildInitialForm = (targetType: BorrowTargetType, departmentId?: string, assetId = '') => ({
+  assetId,
   categoryId: '',
   description: '',
   borrowDate: '',
@@ -33,12 +35,10 @@ const buildInitialForm = (targetType: BorrowTargetType, departmentId?: string) =
 
 const requestLabel = (request: BorrowRequest) => request.assetName ?? request.categoryName;
 const requestReference = (request: BorrowRequest) => request.assetCode ?? request.categoryCode;
-const requestTarget = (request: BorrowRequest) => request.targetType === 'department'
-  ? `${request.departmentName ?? 'Department'}`
-  : request.requesterName;
 
 export default function BorrowRequestsPage() {
   const queryClient = useQueryClient();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { user, hasGrant } = useAuth();
   const isManager = user?.role === 'manager';
   const defaultTargetType: BorrowTargetType = isManager ? 'department' : 'individual';
@@ -51,6 +51,8 @@ export default function BorrowRequestsPage() {
   const [form, setForm] = useState(() => buildInitialForm(defaultTargetType, user?.departmentId));
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [categoryOpen, setCategoryOpen] = useState(false);
+  const [approvalRequest, setApprovalRequest] = useState<BorrowRequest | null>(null);
+  const [approvalForm, setApprovalForm] = useState({ assetId: '', notes: '' });
 
   const requestsQuery = useQuery({
     queryKey: ['borrow-requests', search, statusFilter, page, pageSize],
@@ -67,10 +69,40 @@ export default function BorrowRequestsPage() {
     queryFn: api.reference.categories,
   });
 
+  const preferredAssetQuery = useQuery({
+    queryKey: ['asset-detail', form.assetId, 'borrow-prefill'],
+    queryFn: () => api.assets.detail(form.assetId),
+    enabled: showCreate && !!form.assetId,
+  });
+
+  const availableAssetsQuery = useQuery({
+    queryKey: ['borrow-requests', approvalRequest?.id, 'available-assets'],
+    queryFn: () => api.borrowRequests.availableAssets(approvalRequest!.id),
+    enabled: !!approvalRequest,
+  });
+
+  const preferredAsset = preferredAssetQuery.data?.asset ?? null;
   const selectedCategory = useMemo(
     () => categoriesQuery.data?.find(category => category.id === form.categoryId) ?? null,
     [categoriesQuery.data, form.categoryId],
   );
+
+  useEffect(() => {
+    if (!showCreate || !preferredAsset || form.categoryId === preferredAsset.categoryId) {
+      return;
+    }
+    setForm(current => ({ ...current, categoryId: preferredAsset.categoryId }));
+  }, [form.categoryId, preferredAsset, showCreate]);
+
+  useEffect(() => {
+    if (showCreate || searchParams.get('create') !== '1') {
+      return;
+    }
+    const assetId = searchParams.get('assetId') ?? '';
+    setForm(buildInitialForm(defaultTargetType, user?.departmentId, assetId));
+    setErrors({});
+    setShowCreate(true);
+  }, [defaultTargetType, searchParams, showCreate, user?.departmentId]);
 
   const patchBorrowRequest = (updated: BorrowRequest) => {
     queryClient.setQueriesData<PageResponse<BorrowRequest>>({ queryKey: ['borrow-requests'] }, current => {
@@ -80,35 +112,47 @@ export default function BorrowRequestsPage() {
         items: current.items.map(item => item.id === updated.id ? updated : item),
       };
     });
-    if (updated.assetId) {
-      queryClient.setQueryData(['asset-detail', updated.assetId], (current: any) => {
-        if (!current) return current;
-        return {
-          ...current,
-          borrowRequests: current.borrowRequests?.map((item: BorrowRequest) => item.id === updated.id ? updated : item) ?? current.borrowRequests,
-        };
-      });
+  };
+
+  const closeCreate = () => {
+    setShowCreate(false);
+    setForm(buildInitialForm(defaultTargetType, user?.departmentId));
+    setErrors({});
+    if (searchParams.get('create') === '1' || searchParams.get('assetId')) {
+      const next = new URLSearchParams(searchParams);
+      next.delete('create');
+      next.delete('assetId');
+      setSearchParams(next);
     }
   };
 
   const decisionMutation = useMutation({
-    mutationFn: async ({ id, decision }: { id: string; decision: 'approve' | 'reject' }) => (
-      decision === 'approve' ? api.borrowRequests.approve(id) : api.borrowRequests.reject(id)
+    mutationFn: async ({ id, decision, assetId, notes }: { id: string; decision: 'approve' | 'reject'; assetId?: string; notes?: string }) => (
+      decision === 'approve'
+        ? api.borrowRequests.approve(id, { assetId, notes })
+        : api.borrowRequests.reject(id, { notes })
     ),
     onSuccess: (updated, variables) => {
       patchBorrowRequest(updated);
       queryClient.invalidateQueries({ queryKey: ['borrow-requests'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['assets'] });
+      if (updated.assetId) {
+        queryClient.invalidateQueries({ queryKey: ['asset-detail', updated.assetId] });
+      }
       toast.success(variables.decision === 'approve' ? 'Request approved' : 'Request rejected');
       setShowDetail(null);
+      setApprovalRequest(null);
+      setApprovalForm({ assetId: '', notes: '' });
     },
-    onError: (error) => {
+    onError: error => {
       toast.error(error instanceof HttpError ? error.message : 'Unable to update request');
     },
   });
 
   const createMutation = useMutation({
     mutationFn: () => api.borrowRequests.create({
+      assetId: form.assetId || undefined,
       categoryId: form.categoryId,
       targetType: form.targetType,
       departmentId: form.targetType === 'department' ? form.departmentId : undefined,
@@ -117,15 +161,16 @@ export default function BorrowRequestsPage() {
       purpose: form.description,
       notes: form.notes || undefined,
     }),
-    onSuccess: () => {
+    onSuccess: created => {
       queryClient.invalidateQueries({ queryKey: ['borrow-requests'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      if (created.assetId) {
+        queryClient.invalidateQueries({ queryKey: ['asset-detail', created.assetId] });
+      }
       toast.success('Request submitted');
-      setShowCreate(false);
-      setForm(buildInitialForm(defaultTargetType, user?.departmentId));
-      setErrors({});
+      closeCreate();
     },
-    onError: (error) => {
+    onError: error => {
       toast.error(error instanceof HttpError ? error.message : 'Unable to submit request');
     },
   });
@@ -133,8 +178,8 @@ export default function BorrowRequestsPage() {
   const data = requestsQuery.data;
   const detail = data?.items.find(request => request.id === showDetail) ?? null;
 
-  const openCreate = () => {
-    setForm(buildInitialForm(defaultTargetType, user?.departmentId));
+  const openCreate = (assetId?: string) => {
+    setForm(buildInitialForm(defaultTargetType, user?.departmentId, assetId ?? ''));
     setErrors({});
     setShowCreate(true);
   };
@@ -149,11 +194,28 @@ export default function BorrowRequestsPage() {
     return Object.keys(nextErrors).length === 0;
   };
 
+  const handleApprove = (request: BorrowRequest) => {
+    if (request.assetId) {
+      decisionMutation.mutate({ id: request.id, decision: 'approve', assetId: request.assetId });
+      return;
+    }
+    setApprovalRequest(request);
+    setApprovalForm({ assetId: '', notes: '' });
+  };
+
+  const categoryDisplay = selectedCategory
+    ? `${selectedCategory.code} - ${selectedCategory.name}`
+    : preferredAsset
+      ? `${preferredAsset.categoryName} - ${preferredAsset.categoryId}`
+      : 'Search categories...';
+
   return (
     <div>
       <PageHeader title="Borrow Requests" description="Category-based equipment requests and approvals">
         {hasGrant(grants.borrowsRequest) && (
-          <Button size="sm" onClick={openCreate}><Plus className="mr-1.5 h-4 w-4" />New Request</Button>
+          <Button size="sm" onClick={() => openCreate()}>
+            <Plus className="mr-1.5 h-4 w-4" />New Request
+          </Button>
         )}
       </PageHeader>
       <div className="space-y-4 p-6">
@@ -195,12 +257,14 @@ export default function BorrowRequestsPage() {
                     <TableCell>
                       <div>
                         <p className="text-sm font-medium">{requestLabel(request)}</p>
-                        <p className="text-xs text-muted-foreground">{requestReference(request)} {request.assetId ? '· Specific asset' : '· Category request'}</p>
+                        <p className="text-xs text-muted-foreground">{requestReference(request)} {request.assetId ? '· Linked asset' : '· Category request'}</p>
                       </div>
                     </TableCell>
                     <TableCell className="text-sm">{request.requesterName}</TableCell>
                     <TableCell className="text-sm">
-                      {request.targetType === 'department' ? `${request.departmentName ?? 'Department'} · Department` : `${requestTarget(request)} · Individual`}
+                      {request.targetType === 'department'
+                        ? `${request.departmentName ?? 'Department'} · Department`
+                        : `${request.requesterName} · Individual`}
                     </TableCell>
                     <TableCell className="max-w-[220px] truncate text-sm">{request.purpose}</TableCell>
                     <TableCell className="text-xs text-muted-foreground">{request.borrowDate} - {request.returnDate}</TableCell>
@@ -216,7 +280,7 @@ export default function BorrowRequestsPage() {
                           <DropdownMenuItem onClick={() => setShowDetail(request.id)}><Eye className="mr-2 h-4 w-4" />View</DropdownMenuItem>
                           {hasGrant(grants.borrowsApprove) && isPending && (
                             <>
-                              <DropdownMenuItem onClick={() => decisionMutation.mutate({ id: request.id, decision: 'approve' })}><CheckCircle className="mr-2 h-4 w-4" />Approve</DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => handleApprove(request)}><CheckCircle className="mr-2 h-4 w-4" />Approve</DropdownMenuItem>
                               <DropdownMenuItem onClick={() => decisionMutation.mutate({ id: request.id, decision: 'reject' })}><XCircle className="mr-2 h-4 w-4" />Reject</DropdownMenuItem>
                             </>
                           )}
@@ -261,12 +325,12 @@ export default function BorrowRequestsPage() {
                 <div><p className="text-xs text-muted-foreground">Return Date</p><p>{detail.returnDate}</p></div>
                 <div className="col-span-2"><p className="text-xs text-muted-foreground">Description / Requirements</p><p>{detail.purpose}</p></div>
                 <div><p className="text-xs text-muted-foreground">Status</p><StatusBadge status={detail.status} /></div>
-                {detail.assetName && <div><p className="text-xs text-muted-foreground">Legacy Asset Reference</p><p>{detail.assetName} ({detail.assetCode})</p></div>}
+                {detail.assetName && <div><p className="text-xs text-muted-foreground">Linked Asset</p><p>{detail.assetName} ({detail.assetCode})</p></div>}
               </div>
               {detail.notes && <div className="text-sm"><p className="text-xs text-muted-foreground">Notes</p><p>{detail.notes}</p></div>}
               {hasGrant(grants.borrowsApprove) && detail.status === 'pending-approval' && (
                 <div className="flex gap-2 pt-2">
-                  <Button size="sm" onClick={() => decisionMutation.mutate({ id: detail.id, decision: 'approve' })}>Approve</Button>
+                  <Button size="sm" onClick={() => handleApprove(detail)}>Approve</Button>
                   <Button size="sm" variant="destructive" onClick={() => decisionMutation.mutate({ id: detail.id, decision: 'reject' })}>Reject</Button>
                 </div>
               )}
@@ -275,7 +339,56 @@ export default function BorrowRequestsPage() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={showCreate} onOpenChange={setShowCreate}>
+      <Dialog open={!!approvalRequest} onOpenChange={() => setApprovalRequest(null)}>
+        <DialogContent className="max-w-xl">
+          <DialogHeader><DialogTitle>Approve Borrow Request</DialogTitle></DialogHeader>
+          {approvalRequest && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <div><p className="text-xs text-muted-foreground">Request</p><p className="font-medium">{approvalRequest.categoryName}</p></div>
+                <div><p className="text-xs text-muted-foreground">Requester</p><p>{approvalRequest.requesterName}</p></div>
+                <div><p className="text-xs text-muted-foreground">Target</p><p>{approvalRequest.targetType === 'department' ? `${approvalRequest.departmentName} department` : approvalRequest.requesterName}</p></div>
+                <div><p className="text-xs text-muted-foreground">Dates</p><p>{approvalRequest.borrowDate} - {approvalRequest.returnDate}</p></div>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Fulfillment Asset</Label>
+                <Select value={approvalForm.assetId} onValueChange={value => setApprovalForm(current => ({ ...current, assetId: value }))}>
+                  <SelectTrigger><SelectValue placeholder="Select a specific asset/device" /></SelectTrigger>
+                  <SelectContent>
+                    {availableAssetsQuery.data?.map(asset => (
+                      <SelectItem key={asset.id} value={asset.id}>{asset.code} - {asset.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">Only available assets matching the requested category are shown.</p>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Approval Notes</Label>
+                <Textarea value={approvalForm.notes} onChange={event => setApprovalForm(current => ({ ...current, notes: event.target.value }))} rows={3} placeholder="Optional approval notes..." />
+              </div>
+
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setApprovalRequest(null)}>Cancel</Button>
+                <Button
+                  onClick={() => decisionMutation.mutate({
+                    id: approvalRequest.id,
+                    decision: 'approve',
+                    assetId: approvalForm.assetId,
+                    notes: approvalForm.notes || undefined,
+                  })}
+                  disabled={decisionMutation.isPending || !approvalForm.assetId}
+                >
+                  Approve Request
+                </Button>
+              </DialogFooter>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showCreate} onOpenChange={open => { if (!open) closeCreate(); }}>
         <DialogContent className="max-w-xl">
           <DialogHeader><DialogTitle>New Borrow Request</DialogTitle></DialogHeader>
           <div className="space-y-4">
@@ -303,44 +416,61 @@ export default function BorrowRequestsPage() {
               </div>
             )}
 
+            {preferredAsset && (
+              <div className="rounded-xl border bg-muted/30 p-4">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="text-sm font-medium">Preferred Asset</p>
+                    <p className="text-sm text-muted-foreground">{preferredAsset.code} - {preferredAsset.name}</p>
+                    <p className="text-xs text-muted-foreground">This request will be submitted for the selected asset while keeping the category-based request flow.</p>
+                  </div>
+                  <Button variant="ghost" size="sm" onClick={() => setForm(current => ({ ...current, assetId: '' }))}>Use category only</Button>
+                </div>
+              </div>
+            )}
+
             <div className="space-y-2">
               <Label>Asset Category</Label>
-              <Popover open={categoryOpen} onOpenChange={setCategoryOpen}>
-                <PopoverTrigger asChild>
-                  <Button variant="outline" role="combobox" className="w-full justify-between">
-                    <span className={cn('truncate', !selectedCategory && 'text-muted-foreground')}>
-                      {selectedCategory ? `${selectedCategory.code} - ${selectedCategory.name}` : 'Search categories...'}
-                    </span>
-                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-[min(420px,calc(100vw-2rem))] p-0" align="start">
-                  <Command>
-                    <CommandInput placeholder="Type a category name or code..." />
-                    <CommandList>
-                      <CommandEmpty>No categories found.</CommandEmpty>
-                      <CommandGroup>
-                        {categoriesQuery.data?.map(category => (
-                          <CommandItem
-                            key={category.id}
-                            value={`${category.code} ${category.name} ${category.description}`}
-                            onSelect={() => {
-                              setForm(current => ({ ...current, categoryId: category.id }));
-                              setCategoryOpen(false);
-                            }}
-                          >
-                            <Check className={cn('mr-2 h-4 w-4', form.categoryId === category.id ? 'opacity-100' : 'opacity-0')} />
-                            <div className="flex flex-col">
-                              <span>{category.name}</span>
-                              <span className="text-xs text-muted-foreground">{category.code}</span>
-                            </div>
-                          </CommandItem>
-                        ))}
-                      </CommandGroup>
-                    </CommandList>
-                  </Command>
-                </PopoverContent>
-              </Popover>
+              {preferredAsset ? (
+                <Input value={preferredAsset.categoryName ?? categoryDisplay} readOnly />
+              ) : (
+                <Popover open={categoryOpen} onOpenChange={setCategoryOpen}>
+                  <PopoverTrigger asChild>
+                    <Button variant="outline" role="combobox" className="w-full justify-between">
+                      <span className={cn('truncate', !selectedCategory && 'text-muted-foreground')}>
+                        {selectedCategory ? `${selectedCategory.code} - ${selectedCategory.name}` : 'Search categories...'}
+                      </span>
+                      <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-[min(420px,calc(100vw-2rem))] p-0" align="start">
+                    <Command>
+                      <CommandInput placeholder="Type a category name or code..." />
+                      <CommandList>
+                        <CommandEmpty>No categories found.</CommandEmpty>
+                        <CommandGroup>
+                          {categoriesQuery.data?.map(category => (
+                            <CommandItem
+                              key={category.id}
+                              value={`${category.code} ${category.name} ${category.description}`}
+                              onSelect={() => {
+                                setForm(current => ({ ...current, categoryId: category.id }));
+                                setCategoryOpen(false);
+                              }}
+                            >
+                              <Check className={cn('mr-2 h-4 w-4', form.categoryId === category.id ? 'opacity-100' : 'opacity-0')} />
+                              <div className="flex flex-col">
+                                <span>{category.name}</span>
+                                <span className="text-xs text-muted-foreground">{category.code}</span>
+                              </div>
+                            </CommandItem>
+                          ))}
+                        </CommandGroup>
+                      </CommandList>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
+              )}
               {errors.categoryId && <p className="text-xs text-destructive">{errors.categoryId}</p>}
             </div>
 
@@ -373,7 +503,7 @@ export default function BorrowRequestsPage() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowCreate(false)}>Cancel</Button>
+            <Button variant="outline" onClick={closeCreate}>Cancel</Button>
             <Button onClick={() => { if (validate()) createMutation.mutate(); }} disabled={createMutation.isPending}>Submit Request</Button>
           </DialogFooter>
         </DialogContent>

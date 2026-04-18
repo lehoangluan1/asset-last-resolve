@@ -84,6 +84,7 @@ class ReportServiceCoverageTest {
         Discrepancy discrepancy = TestDataFactory.discrepancy(TestDataFactory.campaign("VER", CampaignStatus.ACTIVE, java.util.Set.of(admin.getDepartment()), admin), asset, admin, DiscrepancyStatus.OPEN);
         MaintenanceRecord maintenance = TestDataFactory.maintenanceRecord(asset, admin, MaintenanceStatus.IN_PROGRESS);
         BorrowRequest borrowRequest = TestDataFactory.borrowRequest(asset, admin, BorrowStatus.CHECKED_OUT);
+        borrowRequest.setCheckedOutAt(java.time.OffsetDateTime.now());
         when(currentUserService.currentUser()).thenReturn(admin);
         when(authorizationService.canViewReports(admin)).thenReturn(true);
         when(assetRepository.findAll()).thenReturn(List.of(asset));

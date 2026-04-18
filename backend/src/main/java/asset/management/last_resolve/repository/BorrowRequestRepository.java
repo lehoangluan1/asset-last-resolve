@@ -10,4 +10,6 @@ import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 public interface BorrowRequestRepository extends JpaRepository<BorrowRequest, UUID>, JpaSpecificationExecutor<BorrowRequest> {
 
     boolean existsByAsset_IdAndStatusIn(UUID assetId, Collection<BorrowStatus> statuses);
+
+    boolean existsByAsset_IdAndStatusInAndIdNot(UUID assetId, Collection<BorrowStatus> statuses, UUID id);
 }

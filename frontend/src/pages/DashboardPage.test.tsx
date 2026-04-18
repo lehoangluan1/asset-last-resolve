@@ -78,7 +78,7 @@ describe("DashboardPage", () => {
     });
     mockedDashboardGet.mockResolvedValue({
       role: "employee",
-      stats: [{ key: "active-borrows", label: "Active Borrows", value: 2, variant: "info" }],
+      stats: [{ key: "borrowed", label: "Borrowed", value: 2, variant: "info" }],
       departmentDistribution: [{ name: "HR", value: 2 }],
       statusBreakdown: [{ name: "Borrowed", value: 2 }],
       activeCampaign: null,
@@ -88,7 +88,7 @@ describe("DashboardPage", () => {
 
     renderWithProviders(<DashboardPage />);
 
-    await waitFor(() => expect(screen.getByText("Active Borrows")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("Borrowed")).toBeInTheDocument());
     expect(screen.queryByRole("button", { name: /add asset/i })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: /borrow/i })).toBeInTheDocument();
   });

@@ -1,10 +1,13 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { PageHeader } from '@/components/PageHeader';
 import { StatusBadge } from '@/components/StatusBadge';
 import { PaginationBar } from '@/components/PaginationBar';
 import { usePagination } from '@/hooks/usePagination';
+import { useAuth } from '@/contexts/AuthContext';
 import { api, HttpError } from '@/lib/api';
+import { grants } from '@/lib/permissions';
+import type { VerificationCampaign, VerificationTask } from '@/types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -13,12 +16,11 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Progress } from '@/components/ui/progress';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 import { ChartCard } from '@/components/ChartCard';
-import { Plus } from 'lucide-react';
+import { Plus, RefreshCcw } from 'lucide-react';
 import { toast } from 'sonner';
 
 const emptyCampaign = {
@@ -32,12 +34,32 @@ const emptyCampaign = {
   status: 'draft',
 };
 
+const taskResultOptions = [
+  { value: 'matched', label: 'Verified' },
+  { value: 'discrepancy', label: 'Discrepancy' },
+  { value: 'missing', label: 'Missing' },
+  { value: 'damaged', label: 'Damaged' },
+  { value: 'skipped', label: 'Skipped' },
+];
+
+function nextCampaignStatuses(status: VerificationCampaign['status']) {
+  if (status === 'draft') return ['active', 'cancelled'];
+  if (status === 'active') return ['completed', 'cancelled'];
+  return [];
+}
+
 export default function VerificationPage() {
   const queryClient = useQueryClient();
+  const { hasGrant } = useAuth();
+  const canManageVerification = hasGrant(grants.verificationManage);
   const [selectedCampaign, setSelectedCampaign] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState(emptyCampaign);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [statusDialogCampaign, setStatusDialogCampaign] = useState<VerificationCampaign | null>(null);
+  const [nextCampaignStatus, setNextCampaignStatus] = useState('');
+  const [taskDialog, setTaskDialog] = useState<{ campaignId: string; task: VerificationTask } | null>(null);
+  const [taskForm, setTaskForm] = useState({ result: 'matched', notes: '' });
 
   const campaignsQuery = useQuery({
     queryKey: ['verification-campaigns'],
@@ -58,21 +80,69 @@ export default function VerificationPage() {
     discrepancies: item.discrepancyCount,
   }));
 
+  const patchCampaign = (updated: VerificationCampaign) => {
+    queryClient.setQueryData<VerificationCampaign[]>(['verification-campaigns'], current =>
+      current?.map(campaignItem => campaignItem.id === updated.id ? updated : campaignItem) ?? current,
+    );
+  };
+
   const createMutation = useMutation({
     mutationFn: () => api.verification.createCampaign(form),
-    onSuccess: () => {
+    onSuccess: created => {
+      patchCampaign(created);
       queryClient.invalidateQueries({ queryKey: ['verification-campaigns'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       setOpen(false);
       setForm(emptyCampaign);
       toast.success('Verification campaign created');
     },
-    onError: (error) => {
+    onError: error => {
       toast.error(error instanceof HttpError ? error.message : 'Unable to create campaign');
     },
   });
 
-  const openNew = () => { setForm(emptyCampaign); setErrors({}); setOpen(true); };
+  const updateCampaignStatusMutation = useMutation({
+    mutationFn: (campaignId: string) => api.verification.updateCampaignStatus(campaignId, { status: nextCampaignStatus }),
+    onSuccess: updated => {
+      patchCampaign(updated);
+      queryClient.invalidateQueries({ queryKey: ['verification-campaigns'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      setStatusDialogCampaign(null);
+      setNextCampaignStatus('');
+      toast.success('Campaign status updated');
+    },
+    onError: error => {
+      toast.error(error instanceof HttpError ? error.message : 'Unable to update campaign status');
+    },
+  });
+
+  const updateTaskMutation = useMutation({
+    mutationFn: () => api.verification.updateTask(taskDialog!.campaignId, taskDialog!.task.id, {
+      result: taskForm.result,
+      notes: taskForm.notes || undefined,
+    }),
+    onSuccess: updated => {
+      patchCampaign(updated);
+      queryClient.invalidateQueries({ queryKey: ['verification-campaigns'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['assets'] });
+      if (taskDialog?.task.assetId) {
+        queryClient.invalidateQueries({ queryKey: ['asset-detail', taskDialog.task.assetId] });
+      }
+      setTaskDialog(null);
+      setTaskForm({ result: 'matched', notes: '' });
+      toast.success('Verification item updated');
+    },
+    onError: error => {
+      toast.error(error instanceof HttpError ? error.message : 'Unable to update verification item');
+    },
+  });
+
+  const openNew = () => {
+    setForm(emptyCampaign);
+    setErrors({});
+    setOpen(true);
+  };
 
   const toggleDept = (deptId: string) => {
     setForm(current => ({
@@ -94,10 +164,18 @@ export default function VerificationPage() {
     return Object.keys(nextErrors).length === 0;
   };
 
+  const canUpdateCampaign = campaign && canManageVerification && nextCampaignStatuses(campaign.status).length > 0;
+  const actionableTaskIds = useMemo(
+    () => new Set((campaign?.tasks ?? []).map(task => task.id)),
+    [campaign?.tasks],
+  );
+
   return (
     <div>
       <PageHeader title="Verification Campaigns" description="Annual asset verification campaigns and tasks">
-        <Button size="sm" onClick={openNew}><Plus className="h-4 w-4 mr-1.5" />New Campaign</Button>
+        {canManageVerification && (
+          <Button size="sm" onClick={openNew}><Plus className="h-4 w-4 mr-1.5" />New Campaign</Button>
+        )}
       </PageHeader>
       <div className="p-6 space-y-6">
         {!selectedCampaign ? (
@@ -140,9 +218,23 @@ export default function VerificationPage() {
             <Button variant="ghost" size="sm" onClick={() => setSelectedCampaign(null)}>← Back to Campaigns</Button>
             {campaign && (
               <div className="space-y-4">
-                <div className="flex items-center gap-3">
-                  <h2 className="text-lg font-semibold">{campaign.name}</h2>
-                  <StatusBadge status={campaign.status} />
+                <div className="flex items-center justify-between gap-4">
+                  <div className="flex items-center gap-3">
+                    <h2 className="text-lg font-semibold">{campaign.name}</h2>
+                    <StatusBadge status={campaign.status} />
+                  </div>
+                  {canUpdateCampaign && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setStatusDialogCampaign(campaign);
+                        setNextCampaignStatus(nextCampaignStatuses(campaign.status)[0] ?? '');
+                      }}
+                    >
+                      <RefreshCcw className="mr-1.5 h-4 w-4" />Update Status
+                    </Button>
+                  )}
                 </div>
                 <div className="grid grid-cols-4 gap-4">
                   <Card className="rounded-xl p-4 text-center"><p className="text-2xl font-bold">{campaign.totalTasks}</p><p className="text-xs text-muted-foreground">Total Tasks</p></Card>
@@ -153,16 +245,37 @@ export default function VerificationPage() {
                 <div className="rounded-xl border bg-card shadow-sm overflow-hidden">
                   <Table>
                     <TableHeader><TableRow>
-                      <TableHead>Asset</TableHead><TableHead>Expected Location</TableHead><TableHead>Observed Location</TableHead><TableHead>Result</TableHead><TableHead>Verified At</TableHead>
+                      <TableHead>Asset</TableHead>
+                      <TableHead>Expected Location</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Verified At</TableHead>
+                      <TableHead>Notes</TableHead>
+                      {canManageVerification && campaign.status === 'active' && <TableHead className="w-[140px]">Action</TableHead>}
                     </TableRow></TableHeader>
                     <TableBody>
                       {taskPagination.paginatedItems.map(task => (
-                        <TableRow key={task.id} className={task.result === 'discrepancy' ? 'bg-destructive/5' : ''}>
+                        <TableRow key={task.id} className={task.result === 'discrepancy' || task.result === 'missing' || task.result === 'damaged' ? 'bg-destructive/5' : ''}>
                           <TableCell><div><p className="font-medium text-sm">{task.assetName}</p><p className="text-xs text-muted-foreground">{task.assetCode}</p></div></TableCell>
                           <TableCell className="text-sm">{task.expectedLocation}</TableCell>
-                          <TableCell className={`text-sm ${task.result === 'discrepancy' ? 'text-destructive font-medium' : ''}`}>{task.observedLocation || '—'}</TableCell>
                           <TableCell><StatusBadge status={task.result} /></TableCell>
                           <TableCell className="text-xs text-muted-foreground">{task.verifiedAt || '—'}</TableCell>
+                          <TableCell className="text-sm text-muted-foreground">{task.notes || '—'}</TableCell>
+                          {canManageVerification && campaign.status === 'active' && (
+                            <TableCell>
+                              {actionableTaskIds.has(task.id) ? (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => {
+                                    setTaskDialog({ campaignId: campaign.id, task });
+                                    setTaskForm({ result: task.result === 'pending' ? 'matched' : task.result, notes: task.notes || '' });
+                                  }}
+                                >
+                                  Update Item
+                                </Button>
+                              ) : null}
+                            </TableCell>
+                          )}
                         </TableRow>
                       ))}
                     </TableBody>
@@ -257,6 +370,74 @@ export default function VerificationPage() {
             <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
             <Button onClick={() => { if (validate()) createMutation.mutate(); }} disabled={createMutation.isPending}>Create Campaign</Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!statusDialogCampaign} onOpenChange={() => setStatusDialogCampaign(null)}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader><DialogTitle>Update Campaign Status</DialogTitle></DialogHeader>
+          {statusDialogCampaign && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <div><p className="text-xs text-muted-foreground">Campaign</p><p className="font-medium">{statusDialogCampaign.name}</p></div>
+                <div><p className="text-xs text-muted-foreground">Current Status</p><StatusBadge status={statusDialogCampaign.status} /></div>
+              </div>
+              <div className="space-y-2">
+                <Label>Next Status</Label>
+                <Select value={nextCampaignStatus} onValueChange={setNextCampaignStatus}>
+                  <SelectTrigger><SelectValue placeholder="Select next status" /></SelectTrigger>
+                  <SelectContent>
+                    {nextCampaignStatuses(statusDialogCampaign.status).map(status => (
+                      <SelectItem key={status} value={status}>{status.replace(/-/g, ' ').replace(/\b\w/g, letter => letter.toUpperCase())}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setStatusDialogCampaign(null)}>Cancel</Button>
+                <Button onClick={() => updateCampaignStatusMutation.mutate(statusDialogCampaign.id)} disabled={updateCampaignStatusMutation.isPending || !nextCampaignStatus}>
+                  Save Status
+                </Button>
+              </DialogFooter>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!taskDialog} onOpenChange={() => setTaskDialog(null)}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader><DialogTitle>Update Verification Item</DialogTitle></DialogHeader>
+          {taskDialog && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <div><p className="text-xs text-muted-foreground">Asset</p><p className="font-medium">{taskDialog.task.assetName}</p></div>
+                <div><p className="text-xs text-muted-foreground">Current Status</p><StatusBadge status={taskDialog.task.result} /></div>
+                <div><p className="text-xs text-muted-foreground">Expected Location</p><p>{taskDialog.task.expectedLocation}</p></div>
+                <div><p className="text-xs text-muted-foreground">Expected Assignee</p><p>{taskDialog.task.expectedAssignee || '—'}</p></div>
+              </div>
+              <div className="space-y-2">
+                <Label>Verification Result</Label>
+                <Select value={taskForm.result} onValueChange={value => setTaskForm(current => ({ ...current, result: value }))}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {taskResultOptions.map(option => (
+                      <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Notes</Label>
+                <Textarea value={taskForm.notes} onChange={event => setTaskForm(current => ({ ...current, notes: event.target.value }))} rows={3} placeholder="Add verification notes..." />
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setTaskDialog(null)}>Cancel</Button>
+                <Button onClick={() => updateTaskMutation.mutate()} disabled={updateTaskMutation.isPending}>
+                  Save Item Status
+                </Button>
+              </DialogFooter>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </div>

@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { waitForBackend } from "./support/session";
 
 test("redirects unauthenticated users to login", async ({ page }) => {
   await page.goto("/assets");
@@ -8,6 +9,7 @@ test("redirects unauthenticated users to login", async ({ page }) => {
 });
 
 test("shows an error for invalid login", async ({ page }) => {
+  await waitForBackend(page);
   await page.goto("/login");
   await page.getByLabel("Username").fill("admin");
   await page.getByLabel("Password").fill("wrong-password");

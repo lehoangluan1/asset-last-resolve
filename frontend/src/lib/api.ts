@@ -134,6 +134,14 @@ export const api = {
   assignments: {
     list: (query: { search?: string; type?: string; page?: number; size?: number }) =>
       request<PageResponse<Assignment>>(withQuery('/api/assignments', query)),
+    create: (payload: {
+      assetId: string;
+      toUserId: string;
+      type: string;
+      effectiveDate: string;
+      returnDate?: string;
+      notes?: string;
+    }) => request<Assignment>('/api/assignments', { method: 'POST', body: JSON.stringify(payload) }),
   },
   borrowRequests: {
     list: (query: { search?: string; status?: string; page?: number; size?: number }) =>
@@ -149,7 +157,8 @@ export const api = {
       notes?: string;
     }) =>
       request<BorrowRequest>('/api/borrow-requests', { method: 'POST', body: JSON.stringify(payload) }),
-    approve: (id: string, payload?: { notes?: string }) =>
+    availableAssets: (id: string) => request<Asset[]>(`/api/borrow-requests/${id}/available-assets`),
+    approve: (id: string, payload?: { assetId?: string; notes?: string }) =>
       request<BorrowRequest>(`/api/borrow-requests/${id}/approve`, { method: 'POST', body: JSON.stringify(payload ?? {}) }),
     reject: (id: string, payload?: { notes?: string }) =>
       request<BorrowRequest>(`/api/borrow-requests/${id}/reject`, { method: 'POST', body: JSON.stringify(payload ?? {}) }),
@@ -186,6 +195,10 @@ export const api = {
       dueDate: string;
       startDate: string;
     }) => request<VerificationCampaign>('/api/verification/campaigns', { method: 'POST', body: JSON.stringify(payload) }),
+    updateCampaignStatus: (id: string, payload: { status: string }) =>
+      request<VerificationCampaign>(`/api/verification/campaigns/${id}/status`, { method: 'PATCH', body: JSON.stringify(payload) }),
+    updateTask: (campaignId: string, taskId: string, payload: { result: string; notes?: string }) =>
+      request<VerificationCampaign>(`/api/verification/campaigns/${campaignId}/tasks/${taskId}`, { method: 'PATCH', body: JSON.stringify(payload) }),
   },
   discrepancies: {
     list: (query: { search?: string; status?: string; severity?: string; page?: number; size?: number }) =>

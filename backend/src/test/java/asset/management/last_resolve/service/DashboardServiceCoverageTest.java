@@ -6,8 +6,10 @@ import static org.mockito.Mockito.when;
 import asset.management.last_resolve.dto.DashboardDtos;
 import asset.management.last_resolve.entity.AppUser;
 import asset.management.last_resolve.entity.Asset;
+import asset.management.last_resolve.entity.BorrowRequest;
 import asset.management.last_resolve.entity.Department;
 import asset.management.last_resolve.entity.VerificationCampaign;
+import asset.management.last_resolve.enums.BorrowStatus;
 import asset.management.last_resolve.enums.CampaignStatus;
 import asset.management.last_resolve.enums.LifecycleStatus;
 import asset.management.last_resolve.enums.UserRole;
@@ -83,7 +85,7 @@ class DashboardServiceCoverageTest {
         when(authorizationService.canManageVerification(admin)).thenReturn(true);
         when(authorizationService.canManageMaintenance(admin)).thenReturn(true);
         when(authorizationService.canManageDisposal(admin)).thenReturn(true);
-        when(authorizationService.isOneOf(admin, UserRole.EMPLOYEE, UserRole.MANAGER, UserRole.OFFICER, UserRole.ADMIN)).thenReturn(true);
+        when(authorizationService.isOneOf(admin, UserRole.MANAGER, UserRole.OFFICER, UserRole.ADMIN)).thenReturn(true);
         when(assetRepository.findAll()).thenReturn(List.of(asset));
         when(authorizationService.canViewAsset(admin, asset)).thenReturn(true);
         when(borrowRequestRepository.findAll()).thenReturn(List.of());
@@ -105,14 +107,16 @@ class DashboardServiceCoverageTest {
 
     @Test
     void employeeDashboardOmitsVerificationCampaignSummary() {
+        BorrowRequest borrowed = TestDataFactory.borrowRequest(asset, employee, BorrowStatus.APPROVED);
+        borrowed.setCheckedOutAt(java.time.OffsetDateTime.now());
         when(currentUserService.currentUser()).thenReturn(employee);
         when(authorizationService.canManageVerification(employee)).thenReturn(false);
         when(authorizationService.canManageMaintenance(employee)).thenReturn(false);
         when(authorizationService.canManageDisposal(employee)).thenReturn(false);
-        when(authorizationService.isOneOf(employee, UserRole.EMPLOYEE, UserRole.MANAGER, UserRole.OFFICER, UserRole.ADMIN)).thenReturn(true);
         when(assetRepository.findAll()).thenReturn(List.of(asset));
         when(authorizationService.canViewAsset(employee, asset)).thenReturn(true);
-        when(borrowRequestRepository.findAll()).thenReturn(List.of());
+        when(borrowRequestRepository.findAll()).thenReturn(List.of(borrowed));
+        when(authorizationService.canViewBorrowRequest(employee, borrowed)).thenReturn(true);
         when(discrepancyRepository.findAll()).thenReturn(List.of());
         when(maintenanceRecordRepository.findAll()).thenReturn(List.of());
         when(disposalRequestRepository.findAll()).thenReturn(List.of());
@@ -123,5 +127,6 @@ class DashboardServiceCoverageTest {
 
         assertThat(response.activeCampaign()).isNull();
         assertThat(response.stats()).extracting(DashboardDtos.DashboardStatResponse::key).doesNotContain("discrepancies", "pending-disposal");
+        assertThat(response.stats()).extracting(DashboardDtos.DashboardStatResponse::key).contains("borrowed");
     }
 }

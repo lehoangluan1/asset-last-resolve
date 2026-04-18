@@ -49,7 +49,10 @@ public class ReportService {
             .count();
         long activeBorrows = borrowRequestRepository.findAll().stream()
             .filter(request -> authorizationService.canViewBorrowRequest(currentUser, request))
-            .filter(request -> request.getStatus().getValue().equals("checked-out"))
+            .filter(request -> request.getCheckedOutAt() != null)
+            .filter(request -> request.getStatus().getValue().equals("approved")
+                || request.getStatus().getValue().equals("checked-out")
+                || request.getStatus().getValue().equals("overdue"))
             .count();
         return new ReportDtos.ReportSummaryResponse(totalAssets, openDiscrepancies, activeMaintenance, activeBorrows);
     }

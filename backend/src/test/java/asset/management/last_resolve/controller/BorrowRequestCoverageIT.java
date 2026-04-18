@@ -97,6 +97,53 @@ class BorrowRequestCoverageIT extends RemoteIntegrationTestSupport {
             .andExpect(status().isNotFound());
     }
 
+    @Test
+    void categoryRequestsRequireSelectedAssetsDuringApproval() throws Exception {
+        String officerToken = login(OFFICER_USERNAME, DEMO_PASSWORD);
+        String employeeToken = login(EMPLOYEE_USERNAME, DEMO_PASSWORD);
+        String purpose = "Category approval " + uniqueSuffix();
+        String assetId = createBorrowableHrAsset(officerToken, purpose);
+
+        MvcResult creation = mockMvc.perform(post("/api/borrow-requests")
+                .header("Authorization", bearer(employeeToken))
+                .contentType(APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(Map.of(
+                    "categoryId", "00000000-0000-0000-0000-000000000301",
+                    "borrowDate", "2026-05-10",
+                    "returnDate", "2026-05-12",
+                    "purpose", purpose,
+                    "notes", "Category-only request"
+                ))))
+            .andExpect(status().isOk())
+            .andReturn();
+
+        String requestId = objectMapper.readTree(creation.getResponse().getContentAsString()).get("id").asText();
+        String managerToken = login(HR_MANAGER_USERNAME, DEMO_PASSWORD);
+
+        mockMvc.perform(post("/api/borrow-requests/" + requestId + "/approve")
+                .header("Authorization", bearer(managerToken))
+                .contentType(APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(Map.of("notes", "Missing asset selection"))))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString("Select a specific asset")));
+
+        mockMvc.perform(get("/api/borrow-requests/" + requestId + "/available-assets")
+                .header("Authorization", bearer(managerToken)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$[?(@.id=='" + assetId + "')]").exists());
+
+        mockMvc.perform(post("/api/borrow-requests/" + requestId + "/approve")
+                .header("Authorization", bearer(managerToken))
+                .contentType(APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(Map.of(
+                    "assetId", assetId,
+                    "notes", "Approved with a selected asset"
+                ))))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.status").value("approved"))
+            .andExpect(jsonPath("$.assetId").value(assetId));
+    }
+
     private String createBorrowableHrAsset(String officerToken, String purpose) throws Exception {
         String suffix = uniqueSuffix().toUpperCase();
         MvcResult result = mockMvc.perform(post("/api/assets")

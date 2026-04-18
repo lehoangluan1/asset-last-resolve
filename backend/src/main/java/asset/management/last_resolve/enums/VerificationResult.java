@@ -6,7 +6,10 @@ import com.fasterxml.jackson.annotation.JsonValue;
 public enum VerificationResult implements ApiValueEnum {
     MATCHED("matched"),
     DISCREPANCY("discrepancy"),
-    PENDING("pending");
+    PENDING("pending"),
+    MISSING("missing"),
+    DAMAGED("damaged"),
+    SKIPPED("skipped");
 
     private final String value;
 

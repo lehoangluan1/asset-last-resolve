@@ -5,6 +5,7 @@ export const grants = {
   assetsRead: 'assets.read',
   assetsManage: 'assets.manage',
   assignmentsRead: 'assignments.read',
+  assignmentsManage: 'assignments.manage',
   borrowsRead: 'borrows.read',
   borrowsRequest: 'borrows.request',
   borrowsApprove: 'borrows.approve',

@@ -70,6 +70,10 @@ public class AuthorizationService {
         return assignment.getToUser().getId().equals(user.getId());
     }
 
+    public boolean canManageAssignments(AppUser user) {
+        return isOneOf(user, UserRole.ADMIN, UserRole.OFFICER);
+    }
+
     public boolean canViewBorrowRequest(AppUser user, BorrowRequest request) {
         if (isOneOf(user, UserRole.ADMIN, UserRole.OFFICER, UserRole.AUDITOR)) {
             return true;

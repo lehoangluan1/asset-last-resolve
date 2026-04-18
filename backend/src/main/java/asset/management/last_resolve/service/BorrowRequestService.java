@@ -1,5 +1,6 @@
 package asset.management.last_resolve.service;
 
+import asset.management.last_resolve.dto.AssetDtos;
 import asset.management.last_resolve.dto.CommonDtos;
 import asset.management.last_resolve.dto.WorkflowDtos;
 import asset.management.last_resolve.entity.AppUser;
@@ -15,6 +16,7 @@ import asset.management.last_resolve.enums.UserRole;
 import asset.management.last_resolve.exception.BadRequestException;
 import asset.management.last_resolve.exception.ForbiddenOperationException;
 import asset.management.last_resolve.exception.ResourceNotFoundException;
+import asset.management.last_resolve.mapper.AssetMapper;
 import asset.management.last_resolve.mapper.WorkflowMapper;
 import asset.management.last_resolve.repository.AssetCategoryRepository;
 import asset.management.last_resolve.repository.AssetRepository;
@@ -40,11 +42,16 @@ public class BorrowRequestService {
         BorrowStatus.CHECKED_OUT,
         BorrowStatus.OVERDUE
     );
+    private static final Set<LifecycleStatus> AVAILABLE_LIFECYCLE_STATUSES = Set.of(
+        LifecycleStatus.IN_STORAGE,
+        LifecycleStatus.IN_USE
+    );
 
     private final BorrowRequestRepository borrowRequestRepository;
     private final AssetRepository assetRepository;
     private final AssetCategoryRepository assetCategoryRepository;
     private final DepartmentRepository departmentRepository;
+    private final AssetMapper assetMapper;
     private final WorkflowMapper workflowMapper;
     private final PageResponseFactory pageResponseFactory;
     private final CurrentUserService currentUserService;
@@ -104,7 +111,7 @@ public class BorrowRequestService {
             if (!asset.isBorrowable()) {
                 throw new BadRequestException("This asset is not borrowable");
             }
-            if (asset.getLifecycleStatus() != LifecycleStatus.IN_STORAGE && asset.getLifecycleStatus() != LifecycleStatus.IN_USE) {
+            if (!AVAILABLE_LIFECYCLE_STATUSES.contains(asset.getLifecycleStatus())) {
                 throw new BadRequestException("This asset is not currently available for borrowing");
             }
             boolean activeRequestExists = borrowRequestRepository.existsByAsset_IdAndStatusIn(asset.getId(), ACTIVE_WORKFLOW_STATUSES);
@@ -142,9 +149,27 @@ public class BorrowRequestService {
     }
 
     @Transactional
-    public WorkflowDtos.BorrowRequestResponse approve(UUID requestId, WorkflowDtos.DecisionRequest request) {
+    public WorkflowDtos.BorrowRequestResponse approve(UUID requestId, WorkflowDtos.BorrowApprovalRequest request) {
         AppUser currentUser = currentUserService.currentUser();
-        BorrowRequest saved = decide(requestId, currentUser, BorrowStatus.APPROVED, request);
+        BorrowRequest borrowRequest = borrowRequestRepository.findById(requestId)
+            .orElseThrow(() -> new ResourceNotFoundException("Borrow request not found"));
+        if (!authorizationService.canApproveBorrowRequest(currentUser, borrowRequest)) {
+            throw new ForbiddenOperationException("You do not have permission to review this request");
+        }
+        if (borrowRequest.getStatus() != BorrowStatus.PENDING_APPROVAL) {
+            throw new BadRequestException("Only pending borrow requests can be reviewed");
+        }
+
+        Asset selectedAsset = resolveApprovalAsset(borrowRequest, request == null ? null : request.assetId(), currentUser);
+        borrowRequest.setAsset(selectedAsset);
+        borrowRequest.setStatus(BorrowStatus.APPROVED);
+        borrowRequest.setApprovedBy(currentUser);
+        borrowRequest.setApproverNotes(request == null ? null : request.notes());
+        borrowRequest.setDecisionAt(OffsetDateTime.now());
+        borrowRequest.setCheckedOutAt(OffsetDateTime.now());
+        selectedAsset.setLifecycleStatus(LifecycleStatus.BORROWED);
+
+        BorrowRequest saved = borrowRequestRepository.save(borrowRequest);
         String label = requestLabel(saved);
         notificationService.create(
             saved.getRequester(),
@@ -158,6 +183,29 @@ public class BorrowRequestService {
         );
         auditService.log(currentUser, "Approved Borrow Request", "BorrowRequest", saved.getId().toString(), label, "Approved borrow request");
         return workflowMapper.toBorrowRequestResponse(saved);
+    }
+
+    @Transactional(readOnly = true)
+    public List<AssetDtos.AssetResponse> availableAssets(UUID requestId) {
+        AppUser currentUser = currentUserService.currentUser();
+        BorrowRequest borrowRequest = borrowRequestRepository.findById(requestId)
+            .orElseThrow(() -> new ResourceNotFoundException("Borrow request not found"));
+        if (!authorizationService.canApproveBorrowRequest(currentUser, borrowRequest)) {
+            throw new ForbiddenOperationException("You do not have permission to fulfill this request");
+        }
+
+        return assetRepository.findAll().stream()
+            .filter(asset -> asset.getCategory().getId().equals(borrowRequest.getCategory().getId()))
+            .filter(asset -> authorizationService.canViewAsset(currentUser, asset))
+            .filter(asset -> {
+                if (borrowRequest.getAsset() != null && borrowRequest.getAsset().getId().equals(asset.getId())) {
+                    return true;
+                }
+                return isSelectableForApproval(asset, borrowRequest, currentUser);
+            })
+            .sorted(Comparator.comparing(Asset::getCode))
+            .map(assetMapper::toAssetResponse)
+            .toList();
     }
 
     @Transactional
@@ -193,6 +241,46 @@ public class BorrowRequestService {
         borrowRequest.setApproverNotes(request.notes());
         borrowRequest.setDecisionAt(OffsetDateTime.now());
         return borrowRequestRepository.save(borrowRequest);
+    }
+
+    private Asset resolveApprovalAsset(BorrowRequest borrowRequest, String requestedAssetId, AppUser currentUser) {
+        if (requestedAssetId == null || requestedAssetId.isBlank()) {
+            if (borrowRequest.getAsset() == null) {
+                throw new BadRequestException("Select a specific asset before approving this request");
+            }
+            validateApprovalAsset(borrowRequest.getAsset(), borrowRequest, currentUser);
+            return borrowRequest.getAsset();
+        }
+
+        Asset asset = assetRepository.findById(UUID.fromString(requestedAssetId))
+            .orElseThrow(() -> new ResourceNotFoundException("Asset not found"));
+        validateApprovalAsset(asset, borrowRequest, currentUser);
+        return asset;
+    }
+
+    private void validateApprovalAsset(Asset asset, BorrowRequest borrowRequest, AppUser currentUser) {
+        if (!authorizationService.canViewAsset(currentUser, asset)) {
+            throw new ForbiddenOperationException("You do not have access to fulfill this request with the selected asset");
+        }
+        if (!asset.getCategory().getId().equals(borrowRequest.getCategory().getId())) {
+            throw new BadRequestException("Selected asset must match the requested category");
+        }
+        if (!isSelectableForApproval(asset, borrowRequest, currentUser)) {
+            throw new BadRequestException("Selected asset is not currently available for this borrow request");
+        }
+    }
+
+    private boolean isSelectableForApproval(Asset asset, BorrowRequest borrowRequest, AppUser currentUser) {
+        if (!asset.isBorrowable()) {
+            return false;
+        }
+        if (!AVAILABLE_LIFECYCLE_STATUSES.contains(asset.getLifecycleStatus())) {
+            return false;
+        }
+        if (!authorizationService.canViewAsset(currentUser, asset)) {
+            return false;
+        }
+        return !borrowRequestRepository.existsByAsset_IdAndStatusInAndIdNot(asset.getId(), ACTIVE_WORKFLOW_STATUSES, borrowRequest.getId());
     }
 
     private Department resolveDepartment(AppUser currentUser, String requestedDepartmentId, BorrowTargetType targetType) {

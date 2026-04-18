@@ -104,6 +104,18 @@ class MaintenanceServiceTest {
     }
 
     @Test
+    void createRejectsDuplicateActiveMaintenanceRecords() {
+        when(currentUserService.currentUser()).thenReturn(creator);
+        when(authorizationService.canCreateMaintenance(creator)).thenReturn(true);
+        when(assetRepository.findById(asset.getId())).thenReturn(Optional.of(asset));
+        when(maintenanceRecordRepository.existsByAsset_IdAndStatusIn(eq(asset.getId()), any())).thenReturn(true);
+
+        assertThatThrownBy(() -> service.create(request(MaintenanceStatus.SCHEDULED, null)))
+            .isInstanceOf(BadRequestException.class)
+            .hasMessageContaining("active maintenance record");
+    }
+
+    @Test
     void createRejectsCompletedDateBeforeScheduledDate() {
         when(currentUserService.currentUser()).thenReturn(creator);
         when(authorizationService.canCreateMaintenance(creator)).thenReturn(true);

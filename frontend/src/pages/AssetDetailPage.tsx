@@ -15,7 +15,7 @@ import { grants } from '@/lib/permissions';
 export default function AssetDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { hasGrant } = useAuth();
+  const { user, hasGrant } = useAuth();
 
   const { data, isLoading } = useQuery({
     queryKey: ['asset-detail', id],
@@ -32,6 +32,24 @@ export default function AssetDetailPage() {
   }
 
   const asset = data.asset;
+  const actionableMaintenanceRecord = data.maintenanceRecords.find(record =>
+    (record.status === 'scheduled' || record.status === 'in-progress')
+    && (
+      user?.role === 'admin'
+      || user?.role === 'officer'
+      || (user?.role === 'technician' && record.assignedToId === user.id)
+    ),
+  ) ?? null;
+  const canAssign = hasGrant(grants.assignmentsManage)
+    && asset.lifecycle !== 'borrowed'
+    && asset.lifecycle !== 'under-maintenance'
+    && asset.lifecycle !== 'pending-disposal'
+    && asset.lifecycle !== 'disposed';
+  const canBorrow = hasGrant(grants.borrowsRequest)
+    && asset.borrowable
+    && (asset.lifecycle === 'in-storage' || asset.lifecycle === 'in-use');
+  const canScheduleMaintenance = user?.role === 'admin' || user?.role === 'officer';
+  const canLaunchMaintenance = !!actionableMaintenanceRecord || canScheduleMaintenance;
 
   const info = (label: string, value: string | number | null | undefined) => (
     <div className="space-y-1">
@@ -47,11 +65,41 @@ export default function AssetDetailPage() {
         {hasGrant(grants.assetsManage) && (
           <Button size="sm" variant="outline" onClick={() => navigate(`/assets/${asset.id}/edit`)}><Pencil className="h-4 w-4 mr-1.5" />Edit</Button>
         )}
-        {hasGrant(grants.assignmentsRead) && (
-          <Button size="sm" variant="outline" onClick={() => navigate('/assignments')}><ArrowLeftRight className="h-4 w-4 mr-1.5" />Assign</Button>
+        {hasGrant(grants.assignmentsManage) && (
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={!canAssign}
+            title={!canAssign ? 'This asset cannot be assigned in its current state' : undefined}
+            onClick={() => navigate(`/assignments?create=1&assetId=${asset.id}`)}
+          >
+            <ArrowLeftRight className="h-4 w-4 mr-1.5" />Assign
+          </Button>
         )}
-        {hasGrant(grants.borrowsRequest) && <Button size="sm" variant="outline" onClick={() => navigate('/borrow-requests')}><HandCoins className="h-4 w-4 mr-1.5" />Borrow</Button>}
-        {hasGrant(grants.maintenanceRead) && <Button size="sm" variant="outline" onClick={() => navigate('/maintenance')}><Wrench className="h-4 w-4 mr-1.5" />Maintenance</Button>}
+        {hasGrant(grants.borrowsRequest) && (
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={!canBorrow}
+            title={!canBorrow ? 'This asset is not currently available to borrow' : undefined}
+            onClick={() => navigate(`/borrow-requests?create=1&assetId=${asset.id}`)}
+          >
+            <HandCoins className="h-4 w-4 mr-1.5" />Borrow
+          </Button>
+        )}
+        {canLaunchMaintenance && (
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => navigate(
+              actionableMaintenanceRecord
+                ? `/maintenance?recordId=${actionableMaintenanceRecord.id}&assetId=${asset.id}&search=${encodeURIComponent(asset.code)}&status=actionable`
+                : `/maintenance?create=1&assetId=${asset.id}`,
+            )}
+          >
+            <Wrench className="h-4 w-4 mr-1.5" />Maintenance
+          </Button>
+        )}
         {hasGrant(grants.discrepanciesManage) && <Button size="sm" variant="outline" onClick={() => navigate(`/discrepancies?create=1&assetId=${asset.id}`)}><AlertTriangle className="h-4 w-4 mr-1.5" />Report Discrepancy</Button>}
         {hasGrant(grants.disposalManage) && <Button size="sm" variant="outline" className="text-destructive" onClick={() => navigate(`/disposal?create=1&assetId=${asset.id}`)}><Trash2 className="h-4 w-4 mr-1.5" />Add Disposal Item</Button>}
       </PageHeader>

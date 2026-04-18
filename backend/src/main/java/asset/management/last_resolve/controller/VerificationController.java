@@ -9,6 +9,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -38,5 +39,24 @@ public class VerificationController {
     @PreAuthorize("hasAuthority('verification.manage')")
     public ResponseEntity<WorkflowDtos.VerificationCampaignResponse> createCampaign(@Valid @RequestBody WorkflowDtos.VerificationCampaignCreateRequest request) {
         return ResponseEntity.ok(verificationService.createCampaign(request));
+    }
+
+    @PatchMapping("/campaigns/{campaignId}/status")
+    @PreAuthorize("hasAuthority('verification.manage')")
+    public ResponseEntity<WorkflowDtos.VerificationCampaignResponse> updateCampaignStatus(
+        @PathVariable UUID campaignId,
+        @Valid @RequestBody WorkflowDtos.VerificationCampaignStatusUpdateRequest request
+    ) {
+        return ResponseEntity.ok(verificationService.updateCampaignStatus(campaignId, request));
+    }
+
+    @PatchMapping("/campaigns/{campaignId}/tasks/{taskId}")
+    @PreAuthorize("hasAuthority('verification.manage')")
+    public ResponseEntity<WorkflowDtos.VerificationCampaignResponse> updateTask(
+        @PathVariable UUID campaignId,
+        @PathVariable UUID taskId,
+        @Valid @RequestBody WorkflowDtos.VerificationTaskUpdateRequest request
+    ) {
+        return ResponseEntity.ok(verificationService.updateTask(campaignId, taskId, request));
     }
 }

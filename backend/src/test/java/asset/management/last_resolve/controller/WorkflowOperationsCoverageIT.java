@@ -42,6 +42,7 @@ class WorkflowOperationsCoverageIT extends RemoteIntegrationTestSupport {
     @Test
     void maintenanceEndpointsSupportListingAndCreation() throws Exception {
         String token = login(OFFICER_USERNAME, DEMO_PASSWORD);
+        String assetId = createCoverageMaintenanceAsset(token);
 
         mockMvc.perform(get("/api/maintenance")
                 .queryParam("status", "in-progress")
@@ -53,7 +54,7 @@ class WorkflowOperationsCoverageIT extends RemoteIntegrationTestSupport {
                 .header("Authorization", bearer(token))
                 .contentType(APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(Map.of(
-                    "assetId", HR_LAPTOP_ID,
+                    "assetId", assetId,
                     "type", "Inspection",
                     "description", "Coverage maintenance " + uniqueSuffix(),
                     "techCondition", "good",
@@ -228,5 +229,33 @@ class WorkflowOperationsCoverageIT extends RemoteIntegrationTestSupport {
         request.setEstimatedValue(BigDecimal.valueOf(125));
         request.setNotes("Created by integration coverage");
         return disposalRequestRepository.save(request);
+    }
+
+    private String createCoverageMaintenanceAsset(String officerToken) throws Exception {
+        String suffix = uniqueSuffix().toUpperCase();
+        org.springframework.test.web.servlet.MvcResult result = mockMvc.perform(post("/api/assets")
+                .header("Authorization", bearer(officerToken))
+                .contentType(APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(new java.util.LinkedHashMap<String, Object>() {{
+                    put("name", "Maintenance Coverage " + suffix);
+                    put("code", "MNT-" + suffix);
+                    put("categoryId", "00000000-0000-0000-0000-000000000301");
+                    put("departmentId", "00000000-0000-0000-0000-000000000102");
+                    put("locationId", "00000000-0000-0000-0000-000000000203");
+                    put("brand", "Lenovo");
+                    put("model", "Coverage");
+                    put("serialNumber", "MNT-SER-" + suffix);
+                    put("purchaseDate", "2026-04-01");
+                    put("purchasePrice", 1250.0);
+                    put("warrantyExpiry", "2028-04-01");
+                    put("borrowable", true);
+                    put("notes", "Created for maintenance coverage");
+                    put("condition", "good");
+                    put("description", "Fresh asset for maintenance integration coverage");
+                }})))
+            .andExpect(status().isOk())
+            .andReturn();
+
+        return objectMapper.readTree(result.getResponse().getContentAsString()).get("id").asText();
     }
 }

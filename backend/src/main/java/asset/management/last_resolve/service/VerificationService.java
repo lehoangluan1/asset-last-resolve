@@ -15,6 +15,8 @@ import asset.management.last_resolve.repository.AssetRepository;
 import asset.management.last_resolve.repository.DepartmentRepository;
 import asset.management.last_resolve.repository.VerificationCampaignRepository;
 import asset.management.last_resolve.repository.VerificationTaskRepository;
+import java.time.LocalDate;
+import java.time.OffsetDateTime;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Set;
@@ -26,6 +28,12 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 @RequiredArgsConstructor
 public class VerificationService {
+
+    private static final Set<VerificationResult> DISCREPANCY_RESULTS = Set.of(
+        VerificationResult.DISCREPANCY,
+        VerificationResult.MISSING,
+        VerificationResult.DAMAGED
+    );
 
     private final VerificationCampaignRepository verificationCampaignRepository;
     private final VerificationTaskRepository verificationTaskRepository;
@@ -112,5 +120,115 @@ public class VerificationService {
         verificationTaskRepository.saveAll(tasks);
         auditService.log(currentUser, "Created Verification Campaign", "Campaign", saved.getId().toString(), saved.getName(), "Created verification campaign");
         return workflowMapper.toCampaignResponse(saved, verificationTaskRepository.findByCampaign_IdOrderByCreatedAtDesc(saved.getId()));
+    }
+
+    @Transactional
+    public WorkflowDtos.VerificationCampaignResponse updateCampaignStatus(UUID campaignId, WorkflowDtos.VerificationCampaignStatusUpdateRequest request) {
+        AppUser currentUser = currentUserService.currentUser();
+        VerificationCampaign campaign = verificationCampaignRepository.findById(campaignId)
+            .orElseThrow(() -> new ResourceNotFoundException("Verification campaign not found"));
+        if (!authorizationService.canManageVerification(currentUser) || !authorizationService.canViewVerificationCampaign(currentUser, campaign)) {
+            throw new ForbiddenOperationException("You do not have permission to update this verification campaign");
+        }
+
+        CampaignStatus targetStatus = CampaignStatus.fromValue(request.status());
+        validateCampaignStatusTransition(campaign.getStatus(), targetStatus);
+        campaign.setStatus(targetStatus);
+        VerificationCampaign saved = verificationCampaignRepository.save(campaign);
+        auditService.log(
+            currentUser,
+            "Updated Verification Campaign",
+            "Campaign",
+            saved.getId().toString(),
+            saved.getName(),
+            "Changed verification campaign status to " + targetStatus.getValue()
+        );
+        return workflowMapper.toCampaignResponse(saved, verificationTaskRepository.findByCampaign_IdOrderByCreatedAtDesc(saved.getId()));
+    }
+
+    @Transactional
+    public WorkflowDtos.VerificationCampaignResponse updateTask(UUID campaignId, UUID taskId, WorkflowDtos.VerificationTaskUpdateRequest request) {
+        AppUser currentUser = currentUserService.currentUser();
+        VerificationCampaign campaign = verificationCampaignRepository.findById(campaignId)
+            .orElseThrow(() -> new ResourceNotFoundException("Verification campaign not found"));
+        if (!authorizationService.canManageVerification(currentUser) || !authorizationService.canViewVerificationCampaign(currentUser, campaign)) {
+            throw new ForbiddenOperationException("You do not have permission to update verification items");
+        }
+        if (campaign.getStatus() != CampaignStatus.ACTIVE) {
+            throw new BadRequestException("Verification items can only be updated while the campaign is active");
+        }
+
+        VerificationTask task = verificationTaskRepository.findById(taskId)
+            .orElseThrow(() -> new ResourceNotFoundException("Verification task not found"));
+        if (!task.getCampaign().getId().equals(campaign.getId())) {
+            throw new ResourceNotFoundException("Verification task not found for this campaign");
+        }
+
+        VerificationResult targetResult = VerificationResult.fromValue(request.result());
+        if (targetResult == VerificationResult.PENDING) {
+            throw new BadRequestException("Verification item status must be updated to a reviewed result");
+        }
+
+        task.setResult(targetResult);
+        task.setNotes(request.notes() == null || request.notes().isBlank() ? defaultNotesFor(targetResult) : request.notes().trim());
+        task.setVerifiedAt(OffsetDateTime.now());
+        task.setVerifiedBy(currentUser);
+
+        if (targetResult == VerificationResult.MATCHED) {
+            task.setObservedLocation(task.getExpectedLocation());
+            task.setObservedCondition(task.getExpectedCondition());
+            task.setObservedAssignee(task.getExpectedAssignee());
+        }
+
+        task.getAsset().setLastVerifiedDate(LocalDate.now());
+        verificationTaskRepository.save(task);
+
+        if (DISCREPANCY_RESULTS.contains(targetResult)) {
+            auditService.log(
+                currentUser,
+                "Flagged Verification Result",
+                "VerificationTask",
+                task.getId().toString(),
+                task.getAsset().getName(),
+                "Marked verification item as " + targetResult.getValue()
+            );
+        } else {
+            auditService.log(
+                currentUser,
+                "Updated Verification Result",
+                "VerificationTask",
+                task.getId().toString(),
+                task.getAsset().getName(),
+                "Marked verification item as " + targetResult.getValue()
+            );
+        }
+
+        return workflowMapper.toCampaignResponse(campaign, verificationTaskRepository.findByCampaign_IdOrderByCreatedAtDesc(campaign.getId()));
+    }
+
+    private void validateCampaignStatusTransition(CampaignStatus currentStatus, CampaignStatus targetStatus) {
+        if (currentStatus == targetStatus) {
+            return;
+        }
+        if (currentStatus == CampaignStatus.DRAFT
+            && (targetStatus == CampaignStatus.ACTIVE || targetStatus == CampaignStatus.CANCELLED)) {
+            return;
+        }
+        if (currentStatus == CampaignStatus.ACTIVE
+            && (targetStatus == CampaignStatus.COMPLETED || targetStatus == CampaignStatus.CANCELLED)) {
+            return;
+        }
+        throw new BadRequestException("Invalid verification campaign status transition");
+    }
+
+    private String defaultNotesFor(VerificationResult result) {
+        return switch (result) {
+            case MATCHED -> "Asset verified";
+            case DISCREPANCY -> "Verification discrepancy recorded";
+            case MISSING -> "Asset not found during verification";
+            case DAMAGED -> "Asset damage observed during verification";
+            case SKIPPED -> "Verification skipped";
+            case PENDING -> "Pending verification";
+        };
     }
 }

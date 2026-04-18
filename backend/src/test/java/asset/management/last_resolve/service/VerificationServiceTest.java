@@ -16,6 +16,7 @@ import asset.management.last_resolve.entity.VerificationTask;
 import asset.management.last_resolve.enums.CampaignStatus;
 import asset.management.last_resolve.enums.LifecycleStatus;
 import asset.management.last_resolve.enums.UserRole;
+import asset.management.last_resolve.enums.VerificationResult;
 import asset.management.last_resolve.exception.BadRequestException;
 import asset.management.last_resolve.exception.ForbiddenOperationException;
 import asset.management.last_resolve.exception.ResourceNotFoundException;
@@ -176,6 +177,63 @@ class VerificationServiceTest {
         assertThatThrownBy(() -> service.createCampaign(request("VER-1", "2026-04-18", "2026-04-20", List.of(itDepartment.getId().toString()))))
             .isInstanceOf(ResourceNotFoundException.class)
             .hasMessageContaining("Department not found");
+    }
+
+    @Test
+    void updateCampaignStatusRejectsInvalidTransition() {
+        VerificationCampaign campaign = TestDataFactory.campaign("VER-1", CampaignStatus.COMPLETED, Set.of(itDepartment), auditor);
+        when(currentUserService.currentUser()).thenReturn(auditor);
+        when(verificationCampaignRepository.findById(campaign.getId())).thenReturn(Optional.of(campaign));
+        when(authorizationService.canManageVerification(auditor)).thenReturn(true);
+        when(authorizationService.canViewVerificationCampaign(auditor, campaign)).thenReturn(true);
+
+        assertThatThrownBy(() -> service.updateCampaignStatus(campaign.getId(), new WorkflowDtos.VerificationCampaignStatusUpdateRequest("active")))
+            .isInstanceOf(BadRequestException.class)
+            .hasMessageContaining("Invalid verification campaign status transition");
+    }
+
+    @Test
+    void updateCampaignStatusPersistsValidTransition() {
+        VerificationCampaign campaign = TestDataFactory.campaign("VER-1", CampaignStatus.DRAFT, Set.of(itDepartment), auditor);
+        WorkflowDtos.VerificationCampaignResponse response = response(campaign.getId().toString(), campaign.getCode());
+        when(currentUserService.currentUser()).thenReturn(auditor);
+        when(verificationCampaignRepository.findById(campaign.getId())).thenReturn(Optional.of(campaign));
+        when(authorizationService.canManageVerification(auditor)).thenReturn(true);
+        when(authorizationService.canViewVerificationCampaign(auditor, campaign)).thenReturn(true);
+        when(verificationCampaignRepository.save(campaign)).thenReturn(campaign);
+        when(verificationTaskRepository.findByCampaign_IdOrderByCreatedAtDesc(campaign.getId())).thenReturn(List.of());
+        when(workflowMapper.toCampaignResponse(campaign, List.of())).thenReturn(response);
+
+        WorkflowDtos.VerificationCampaignResponse result = service.updateCampaignStatus(campaign.getId(), new WorkflowDtos.VerificationCampaignStatusUpdateRequest("active"));
+
+        assertThat(campaign.getStatus()).isEqualTo(CampaignStatus.ACTIVE);
+        assertThat(result.code()).isEqualTo(campaign.getCode());
+    }
+
+    @Test
+    void updateTaskMarksVerificationItemComplete() {
+        VerificationCampaign campaign = TestDataFactory.campaign("VER-1", CampaignStatus.ACTIVE, Set.of(itDepartment), auditor);
+        Asset asset = TestDataFactory.asset(itDepartment, null, false, LifecycleStatus.IN_USE);
+        VerificationTask task = TestDataFactory.verificationTask(campaign, asset, auditor);
+        WorkflowDtos.VerificationCampaignResponse response = response(campaign.getId().toString(), campaign.getCode());
+        when(currentUserService.currentUser()).thenReturn(auditor);
+        when(verificationCampaignRepository.findById(campaign.getId())).thenReturn(Optional.of(campaign));
+        when(authorizationService.canManageVerification(auditor)).thenReturn(true);
+        when(authorizationService.canViewVerificationCampaign(auditor, campaign)).thenReturn(true);
+        when(verificationTaskRepository.findById(task.getId())).thenReturn(Optional.of(task));
+        when(verificationTaskRepository.findByCampaign_IdOrderByCreatedAtDesc(campaign.getId())).thenReturn(List.of(task));
+        when(workflowMapper.toCampaignResponse(campaign, List.of(task))).thenReturn(response);
+
+        WorkflowDtos.VerificationCampaignResponse result = service.updateTask(
+            campaign.getId(),
+            task.getId(),
+            new WorkflowDtos.VerificationTaskUpdateRequest("missing", "Asset not found on shelf")
+        );
+
+        assertThat(task.getResult()).isEqualTo(VerificationResult.MISSING);
+        assertThat(task.getVerifiedAt()).isNotNull();
+        assertThat(asset.getLastVerifiedDate()).isNotNull();
+        assertThat(result.code()).isEqualTo(campaign.getCode());
     }
 
     private WorkflowDtos.VerificationCampaignCreateRequest request(String code, String startDate, String dueDate, List<String> departmentIds) {

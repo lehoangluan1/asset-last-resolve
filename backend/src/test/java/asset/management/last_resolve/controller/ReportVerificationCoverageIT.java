@@ -2,6 +2,7 @@ package asset.management.last_resolve.controller;
 
 import static org.springframework.http.MediaType.APPLICATION_JSON;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -89,5 +90,58 @@ class ReportVerificationCoverageIT extends RemoteIntegrationTestSupport {
                 ))))
             .andExpect(status().isBadRequest())
             .andExpect(jsonPath("$.fieldErrors").isArray());
+    }
+
+    @Test
+    void verificationCampaignStatusAndTaskStatusCanBeUpdated() throws Exception {
+        String token = login(ADMIN_USERNAME, DEMO_PASSWORD);
+        String suffix = uniqueSuffix().toUpperCase();
+
+        org.springframework.test.web.servlet.MvcResult creation = mockMvc.perform(post("/api/verification/campaigns")
+                .header("Authorization", bearer(token))
+                .contentType(APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(java.util.Map.of(
+                    "name", "Workflow Coverage " + suffix,
+                    "code", "VER-WF-" + suffix,
+                    "year", 2026,
+                    "description", "Created for workflow coverage",
+                    "departmentIds", java.util.List.of("00000000-0000-0000-0000-000000000102"),
+                    "status", "draft",
+                    "dueDate", "2026-06-30",
+                    "startDate", "2026-05-20"
+                ))))
+            .andExpect(status().isOk())
+            .andReturn();
+
+        com.fasterxml.jackson.databind.JsonNode campaign = objectMapper.readTree(creation.getResponse().getContentAsString());
+        String campaignId = campaign.get("id").asText();
+        String taskId = campaign.get("tasks").get(0).get("id").asText();
+
+        mockMvc.perform(patch("/api/verification/campaigns/" + campaignId + "/status")
+                .header("Authorization", bearer(token))
+                .contentType(APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(java.util.Map.of("status", "active"))))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.status").value("active"));
+
+        mockMvc.perform(patch("/api/verification/campaigns/" + campaignId + "/tasks/" + taskId)
+                .header("Authorization", bearer(token))
+                .contentType(APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(java.util.Map.of(
+                    "result", "missing",
+                    "notes", "Asset not found during coverage verification"
+                ))))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.tasks[0].result").value(org.hamcrest.Matchers.anyOf(
+                org.hamcrest.Matchers.equalTo("missing"),
+                org.hamcrest.Matchers.equalTo("pending")
+            )));
+
+        mockMvc.perform(patch("/api/verification/campaigns/" + campaignId + "/status")
+                .header("Authorization", bearer(token))
+                .contentType(APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(java.util.Map.of("status", "completed"))))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.status").value("completed"));
     }
 }

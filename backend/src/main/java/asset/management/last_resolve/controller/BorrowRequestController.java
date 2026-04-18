@@ -1,6 +1,7 @@
 package asset.management.last_resolve.controller;
 
 import asset.management.last_resolve.dto.CommonDtos;
+import asset.management.last_resolve.dto.AssetDtos;
 import asset.management.last_resolve.dto.WorkflowDtos;
 import asset.management.last_resolve.service.BorrowRequestService;
 import jakarta.validation.Valid;
@@ -40,6 +41,12 @@ public class BorrowRequestController {
         return ResponseEntity.ok(borrowRequestService.get(requestId));
     }
 
+    @GetMapping("/{requestId}/available-assets")
+    @PreAuthorize("hasAuthority('borrows.approve')")
+    public ResponseEntity<java.util.List<AssetDtos.AssetResponse>> availableAssets(@PathVariable UUID requestId) {
+        return ResponseEntity.ok(borrowRequestService.availableAssets(requestId));
+    }
+
     @PostMapping
     @PreAuthorize("hasAuthority('borrows.request')")
     public ResponseEntity<WorkflowDtos.BorrowRequestResponse> create(@Valid @RequestBody WorkflowDtos.BorrowRequestCreateRequest request) {
@@ -50,9 +57,9 @@ public class BorrowRequestController {
     @PreAuthorize("hasAuthority('borrows.approve')")
     public ResponseEntity<WorkflowDtos.BorrowRequestResponse> approve(
         @PathVariable UUID requestId,
-        @RequestBody(required = false) WorkflowDtos.DecisionRequest request
+        @RequestBody(required = false) WorkflowDtos.BorrowApprovalRequest request
     ) {
-        WorkflowDtos.DecisionRequest safeRequest = request == null ? new WorkflowDtos.DecisionRequest(null) : request;
+        WorkflowDtos.BorrowApprovalRequest safeRequest = request == null ? new WorkflowDtos.BorrowApprovalRequest(null, null) : request;
         return ResponseEntity.ok(borrowRequestService.approve(requestId, safeRequest));
     }
 

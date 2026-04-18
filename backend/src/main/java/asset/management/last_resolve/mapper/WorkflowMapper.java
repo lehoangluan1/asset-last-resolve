@@ -8,6 +8,7 @@ import asset.management.last_resolve.entity.DisposalRequest;
 import asset.management.last_resolve.entity.MaintenanceRecord;
 import asset.management.last_resolve.entity.VerificationCampaign;
 import asset.management.last_resolve.entity.VerificationTask;
+import asset.management.last_resolve.enums.VerificationResult;
 import java.util.List;
 import org.springframework.stereotype.Component;
 
@@ -108,7 +109,9 @@ public class WorkflowMapper {
 
     public WorkflowDtos.VerificationCampaignResponse toCampaignResponse(VerificationCampaign campaign, List<VerificationTask> tasks) {
         long completedTasks = tasks.stream().filter(task -> task.getVerifiedAt() != null).count();
-        long discrepancies = tasks.stream().filter(task -> task.getResult().getValue().equals("discrepancy")).count();
+        long discrepancies = tasks.stream()
+            .filter(task -> isDiscrepancyLike(task.getResult()))
+            .count();
         return new WorkflowDtos.VerificationCampaignResponse(
             MapperUtils.uuid(campaign.getId()),
             campaign.getCode(),
@@ -125,6 +128,12 @@ public class WorkflowMapper {
             MapperUtils.timestamp(campaign.getCreatedAt()),
             tasks.stream().map(this::toTaskResponse).toList()
         );
+    }
+
+    private boolean isDiscrepancyLike(VerificationResult result) {
+        return result == VerificationResult.DISCREPANCY
+            || result == VerificationResult.MISSING
+            || result == VerificationResult.DAMAGED;
     }
 
     public WorkflowDtos.DiscrepancyResponse toDiscrepancyResponse(Discrepancy discrepancy) {

@@ -33,6 +33,16 @@ public final class WorkflowDtos {
     ) {
     }
 
+    public record AssignmentCreateRequest(
+        @NotBlank String assetId,
+        @NotBlank String toUserId,
+        @NotBlank String type,
+        @NotBlank String effectiveDate,
+        String returnDate,
+        String notes
+    ) {
+    }
+
     public record BorrowRequestResponse(
         String id,
         String assetId,
@@ -67,6 +77,12 @@ public final class WorkflowDtos {
         @NotBlank String borrowDate,
         @NotBlank String returnDate,
         String purpose,
+        String notes
+    ) {
+    }
+
+    public record BorrowApprovalRequest(
+        String assetId,
         String notes
     ) {
     }
@@ -164,6 +180,17 @@ public final class WorkflowDtos {
         @NotBlank String status,
         @NotBlank String dueDate,
         @NotBlank String startDate
+    ) {
+    }
+
+    public record VerificationCampaignStatusUpdateRequest(
+        @NotBlank String status
+    ) {
+    }
+
+    public record VerificationTaskUpdateRequest(
+        @NotBlank String result,
+        String notes
     ) {
     }
 

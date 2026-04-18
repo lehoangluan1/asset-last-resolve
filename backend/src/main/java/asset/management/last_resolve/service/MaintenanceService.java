@@ -22,6 +22,7 @@ import java.math.BigDecimal;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -30,6 +31,11 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 @RequiredArgsConstructor
 public class MaintenanceService {
+
+    private static final Set<MaintenanceStatus> ACTIVE_STATUSES = Set.of(
+        MaintenanceStatus.SCHEDULED,
+        MaintenanceStatus.IN_PROGRESS
+    );
 
     private final MaintenanceRecordRepository maintenanceRecordRepository;
     private final AssetRepository assetRepository;
@@ -67,6 +73,9 @@ public class MaintenanceService {
         }
         Asset asset = assetRepository.findById(UUID.fromString(request.assetId()))
             .orElseThrow(() -> new ResourceNotFoundException("Asset not found"));
+        if (maintenanceRecordRepository.existsByAsset_IdAndStatusIn(asset.getId(), ACTIVE_STATUSES)) {
+            throw new BadRequestException("This asset already has an active maintenance record");
+        }
         AppUser technician = appUserRepository.findById(UUID.fromString(request.assignedToUserId()))
             .orElseThrow(() -> new ResourceNotFoundException("Assigned technician not found"));
         if (!authorizationService.isOneOf(technician, UserRole.TECHNICIAN, UserRole.OFFICER)) {

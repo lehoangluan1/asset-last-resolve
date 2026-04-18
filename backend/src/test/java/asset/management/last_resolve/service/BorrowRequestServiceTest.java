@@ -17,6 +17,7 @@ import asset.management.last_resolve.enums.LifecycleStatus;
 import asset.management.last_resolve.enums.UserRole;
 import asset.management.last_resolve.exception.BadRequestException;
 import asset.management.last_resolve.exception.ForbiddenOperationException;
+import asset.management.last_resolve.mapper.AssetMapper;
 import asset.management.last_resolve.mapper.WorkflowMapper;
 import asset.management.last_resolve.repository.AssetCategoryRepository;
 import asset.management.last_resolve.repository.AssetRepository;
@@ -45,6 +46,8 @@ class BorrowRequestServiceTest {
     @Mock
     private DepartmentRepository departmentRepository;
     @Mock
+    private AssetMapper assetMapper;
+    @Mock
     private WorkflowMapper workflowMapper;
     @Mock
     private PageResponseFactory pageResponseFactory;
@@ -68,6 +71,7 @@ class BorrowRequestServiceTest {
             assetRepository,
             assetCategoryRepository,
             departmentRepository,
+            assetMapper,
             workflowMapper,
             pageResponseFactory,
             currentUserService,
@@ -186,7 +190,7 @@ class BorrowRequestServiceTest {
         when(borrowRequestRepository.findById(borrowRequest.getId())).thenReturn(Optional.of(borrowRequest));
         when(authorizationService.canApproveBorrowRequest(requester, borrowRequest)).thenReturn(false);
 
-        assertThatThrownBy(() -> service.approve(borrowRequest.getId(), new WorkflowDtos.DecisionRequest("ok")))
+        assertThatThrownBy(() -> service.approve(borrowRequest.getId(), new WorkflowDtos.BorrowApprovalRequest(asset.getId().toString(), "ok")))
             .isInstanceOf(ForbiddenOperationException.class)
             .hasMessageContaining("review this request");
     }
@@ -199,7 +203,7 @@ class BorrowRequestServiceTest {
         when(borrowRequestRepository.findById(borrowRequest.getId())).thenReturn(Optional.of(borrowRequest));
         when(authorizationService.canApproveBorrowRequest(approver, borrowRequest)).thenReturn(true);
 
-        assertThatThrownBy(() -> service.approve(borrowRequest.getId(), new WorkflowDtos.DecisionRequest("ok")))
+        assertThatThrownBy(() -> service.approve(borrowRequest.getId(), new WorkflowDtos.BorrowApprovalRequest(asset.getId().toString(), "ok")))
             .isInstanceOf(BadRequestException.class)
             .hasMessageContaining("Only pending borrow requests");
     }
@@ -212,15 +216,34 @@ class BorrowRequestServiceTest {
         when(currentUserService.currentUser()).thenReturn(approver);
         when(borrowRequestRepository.findById(borrowRequest.getId())).thenReturn(Optional.of(borrowRequest));
         when(authorizationService.canApproveBorrowRequest(approver, borrowRequest)).thenReturn(true);
+        when(assetRepository.findById(asset.getId())).thenReturn(Optional.of(asset));
+        when(authorizationService.canViewAsset(approver, asset)).thenReturn(true);
+        when(borrowRequestRepository.existsByAsset_IdAndStatusInAndIdNot(asset.getId(), Set.of(BorrowStatus.PENDING_APPROVAL, BorrowStatus.APPROVED, BorrowStatus.CHECKED_OUT, BorrowStatus.OVERDUE), borrowRequest.getId())).thenReturn(false);
         when(borrowRequestRepository.save(borrowRequest)).thenReturn(borrowRequest);
         when(workflowMapper.toBorrowRequestResponse(borrowRequest)).thenReturn(response);
 
-        WorkflowDtos.BorrowRequestResponse result = service.approve(borrowRequest.getId(), new WorkflowDtos.DecisionRequest("Approved"));
+        WorkflowDtos.BorrowRequestResponse result = service.approve(borrowRequest.getId(), new WorkflowDtos.BorrowApprovalRequest(asset.getId().toString(), "Approved"));
 
         assertThat(borrowRequest.getStatus()).isEqualTo(BorrowStatus.APPROVED);
         assertThat(borrowRequest.getApprovedBy()).isEqualTo(approver);
+        assertThat(borrowRequest.getCheckedOutAt()).isNotNull();
+        assertThat(asset.getLifecycleStatus()).isEqualTo(LifecycleStatus.BORROWED);
         assertThat(result.status()).isEqualTo(BorrowStatus.APPROVED.getValue());
         verify(notificationService).create(eq(requester), any(), any(), any(), eq("BorrowRequest"), eq(borrowRequest.getId().toString()), eq(approver.getFullName()), eq("normal"));
+    }
+
+    @Test
+    void approveRequiresSelectedAssetForCategoryOnlyRequests() {
+        AppUser approver = TestDataFactory.user(UserRole.MANAGER, requester.getDepartment(), "manager");
+        BorrowRequest borrowRequest = TestDataFactory.borrowRequest(asset, requester, BorrowStatus.PENDING_APPROVAL);
+        borrowRequest.setAsset(null);
+        when(currentUserService.currentUser()).thenReturn(approver);
+        when(borrowRequestRepository.findById(borrowRequest.getId())).thenReturn(Optional.of(borrowRequest));
+        when(authorizationService.canApproveBorrowRequest(approver, borrowRequest)).thenReturn(true);
+
+        assertThatThrownBy(() -> service.approve(borrowRequest.getId(), new WorkflowDtos.BorrowApprovalRequest(null, "Need allocation")))
+            .isInstanceOf(BadRequestException.class)
+            .hasMessageContaining("Select a specific asset");
     }
 
     private WorkflowDtos.BorrowRequestCreateRequest request(String borrowDate, String returnDate) {

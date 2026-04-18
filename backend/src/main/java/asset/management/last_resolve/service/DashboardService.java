@@ -35,7 +35,13 @@ public class DashboardService {
     private static final Set<BorrowStatus> ACTIVE_BORROW_STATUSES = Set.of(
         BorrowStatus.PENDING_APPROVAL,
         BorrowStatus.APPROVED,
-        BorrowStatus.CHECKED_OUT
+        BorrowStatus.CHECKED_OUT,
+        BorrowStatus.OVERDUE
+    );
+    private static final Set<BorrowStatus> BORROWED_STATUSES = Set.of(
+        BorrowStatus.APPROVED,
+        BorrowStatus.CHECKED_OUT,
+        BorrowStatus.OVERDUE
     );
 
     private final AssetRepository assetRepository;
@@ -83,7 +89,9 @@ public class DashboardService {
         if (authorizationService.canManageDisposal(currentUser)) {
             stats.add(new DashboardDtos.DashboardStatResponse("pending-disposal", "Pending Disposal", visibleDisposals.stream().filter(item -> item.getStatus() != DisposalStatus.COMPLETED).count(), "default", null));
         }
-        if (authorizationService.isOneOf(currentUser, UserRole.EMPLOYEE, UserRole.MANAGER, UserRole.OFFICER, UserRole.ADMIN)) {
+        if (currentUser.getRole() == UserRole.EMPLOYEE) {
+            stats.add(new DashboardDtos.DashboardStatResponse("borrowed", "Borrowed", countBorrowedForUser(visibleBorrows, currentUser), "info", "Assets currently borrowed by you"));
+        } else if (authorizationService.isOneOf(currentUser, UserRole.MANAGER, UserRole.OFFICER, UserRole.ADMIN)) {
             stats.add(new DashboardDtos.DashboardStatResponse("active-borrows", "Active Borrows", countActiveBorrows(visibleBorrows), "info", null));
         }
 
@@ -115,7 +123,8 @@ public class DashboardService {
             .limit(2)
             .forEach(item -> upcomingDeadlines.add(new DashboardDtos.DeadlineItemResponse(item.getAsset().getName() + " maintenance", item.getScheduledDate().toString(), item.getStatus().getValue())));
         visibleBorrows.stream()
-            .filter(item -> item.getReturnDate() != null && item.getStatus().getValue().equals("checked-out"))
+            .filter(this::isBorrowedRequest)
+            .filter(item -> item.getReturnDate() != null)
             .sorted(Comparator.comparing(item -> item.getReturnDate()))
             .limit(2)
             .forEach(item -> upcomingDeadlines.add(new DashboardDtos.DeadlineItemResponse((item.getAsset() == null ? item.getCategory().getName() : item.getAsset().getName()) + " return", item.getReturnDate().toString(), "pending")));
@@ -155,7 +164,7 @@ public class DashboardService {
             .map(campaign -> {
                 List<asset.management.last_resolve.entity.VerificationTask> tasks = verificationTaskRepository.findByCampaign_IdOrderByCreatedAtDesc(campaign.getId());
                 long completed = tasks.stream().filter(task -> task.getVerifiedAt() != null).count();
-                long discrepancies = tasks.stream().filter(task -> task.getResult().getValue().equals("discrepancy")).count();
+                long discrepancies = tasks.stream().filter(task -> isDiscrepancyLike(task.getResult())).count();
                 return new DashboardDtos.ActiveCampaignResponse(
                     campaign.getId().toString(),
                     campaign.getName(),
@@ -177,5 +186,22 @@ public class DashboardService {
         return borrowRequests.stream()
             .filter(item -> ACTIVE_BORROW_STATUSES.contains(item.getStatus()))
             .count();
+    }
+
+    private long countBorrowedForUser(List<asset.management.last_resolve.entity.BorrowRequest> borrowRequests, AppUser currentUser) {
+        return borrowRequests.stream()
+            .filter(item -> item.getRequester().getId().equals(currentUser.getId()))
+            .filter(this::isBorrowedRequest)
+            .count();
+    }
+
+    private boolean isBorrowedRequest(asset.management.last_resolve.entity.BorrowRequest request) {
+        return request.getCheckedOutAt() != null && BORROWED_STATUSES.contains(request.getStatus());
+    }
+
+    private boolean isDiscrepancyLike(asset.management.last_resolve.enums.VerificationResult result) {
+        return result == asset.management.last_resolve.enums.VerificationResult.DISCREPANCY
+            || result == asset.management.last_resolve.enums.VerificationResult.MISSING
+            || result == asset.management.last_resolve.enums.VerificationResult.DAMAGED;
     }
 }

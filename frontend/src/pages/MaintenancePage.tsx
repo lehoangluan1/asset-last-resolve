@@ -1,5 +1,6 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useSearchParams } from 'react-router-dom';
 import { Plus, RefreshCcw, Search } from 'lucide-react';
 import { toast } from 'sonner';
 import { PageHeader } from '@/components/PageHeader';
@@ -39,6 +40,7 @@ const nextStatusFor = (record: MaintenanceRecord) => {
 
 export default function MaintenancePage() {
   const queryClient = useQueryClient();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { user, hasGrant } = useAuth();
   const isTechnician = user?.role === 'technician';
   const isOfficer = user?.role === 'officer';
@@ -110,8 +112,7 @@ export default function MaintenancePage() {
       if (createForm.assetId) {
         queryClient.invalidateQueries({ queryKey: ['asset-detail', createForm.assetId] });
       }
-      setCreateOpen(false);
-      setCreateForm(emptyCreateForm);
+      closeCreate();
       toast.success('Maintenance record created');
     },
     onError: (error) => {
@@ -132,8 +133,7 @@ export default function MaintenancePage() {
       queryClient.invalidateQueries({ queryKey: ['assets'] });
       queryClient.invalidateQueries({ queryKey: ['asset-detail', updated.assetId] });
       toast.success(updated.status === 'completed' ? 'Maintenance completed' : 'Maintenance started');
-      setStatusDialogRecord(null);
-      setStatusForm({ completedDate: '', notes: '' });
+      closeStatusDialog();
     },
     onError: error => {
       toast.error(error instanceof HttpError ? error.message : 'Unable to update maintenance status');
@@ -150,9 +150,9 @@ export default function MaintenancePage() {
     return Object.keys(nextErrors).length === 0;
   };
 
-  const openCreate = () => {
+  const openCreate = (assetId?: string) => {
     setCreateErrors({});
-    setCreateForm(emptyCreateForm);
+    setCreateForm({ ...emptyCreateForm, assetId: assetId ?? '' });
     setCreateOpen(true);
   };
 
@@ -164,6 +164,63 @@ export default function MaintenancePage() {
   };
 
   const records = useMemo(() => recordsQuery.data?.items ?? [], [recordsQuery.data]);
+
+  useEffect(() => {
+    const searchValue = searchParams.get('search');
+    const statusValue = searchParams.get('status');
+    if (searchValue && search !== searchValue) {
+      setSearch(searchValue);
+    }
+    if (statusValue && statusFilter !== statusValue) {
+      setStatusFilter(statusValue);
+    }
+  }, [search, searchParams, statusFilter]);
+
+  useEffect(() => {
+    const assetId = searchParams.get('assetId') ?? '';
+    const recordId = searchParams.get('recordId');
+    const shouldCreate = searchParams.get('create') === '1';
+
+    if (recordId && records.length) {
+      const matchingRecord = records.find(record => record.id === recordId);
+      if (matchingRecord && canUpdateRecord(matchingRecord)) {
+        setStatusDialogRecord(matchingRecord);
+        setStatusForm({ completedDate: '', notes: matchingRecord.notes || '' });
+      }
+      return;
+    }
+
+    if (shouldCreate && canCreate && !createOpen) {
+      setCreateErrors({});
+      setCreateForm({ ...emptyCreateForm, assetId });
+      setCreateOpen(true);
+    }
+  }, [canCreate, createOpen, records, searchParams]);
+
+  const closeCreate = () => {
+    setCreateOpen(false);
+    setCreateForm(emptyCreateForm);
+    setCreateErrors({});
+    if (searchParams.get('create') === '1' || searchParams.get('assetId')) {
+      const next = new URLSearchParams(searchParams);
+      next.delete('create');
+      next.delete('assetId');
+      setSearchParams(next);
+    }
+  };
+
+  const closeStatusDialog = () => {
+    setStatusDialogRecord(null);
+    setStatusForm({ completedDate: '', notes: '' });
+    if (searchParams.get('recordId') || searchParams.get('assetId') || searchParams.get('search') || searchParams.get('status')) {
+      const next = new URLSearchParams(searchParams);
+      next.delete('recordId');
+      next.delete('assetId');
+      next.delete('search');
+      next.delete('status');
+      setSearchParams(next);
+    }
+  };
 
   return (
     <div>
@@ -258,7 +315,7 @@ export default function MaintenancePage() {
         </div>
       </div>
 
-      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+      <Dialog open={createOpen} onOpenChange={open => { if (!open) closeCreate(); }}>
         <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
           <DialogHeader><DialogTitle>New Maintenance Record</DialogTitle></DialogHeader>
           <div className="space-y-4 py-2">
@@ -366,13 +423,13 @@ export default function MaintenancePage() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setCreateOpen(false)}>Cancel</Button>
+            <Button variant="outline" onClick={closeCreate}>Cancel</Button>
             <Button onClick={() => { if (validateCreate()) createMutation.mutate(); }} disabled={createMutation.isPending}>Create Record</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      <Dialog open={!!statusDialogRecord} onOpenChange={() => setStatusDialogRecord(null)}>
+      <Dialog open={!!statusDialogRecord} onOpenChange={open => { if (!open) closeStatusDialog(); }}>
         <DialogContent className="max-w-lg">
           <DialogHeader><DialogTitle>Update Maintenance Status</DialogTitle></DialogHeader>
           {statusDialogRecord && (
@@ -394,7 +451,7 @@ export default function MaintenancePage() {
                 <Textarea value={statusForm.notes} onChange={event => setStatusForm(current => ({ ...current, notes: event.target.value }))} rows={3} placeholder="Update notes for this transition..." />
               </div>
               <DialogFooter>
-                <Button variant="outline" onClick={() => setStatusDialogRecord(null)}>Cancel</Button>
+                <Button variant="outline" onClick={closeStatusDialog}>Cancel</Button>
                 <Button onClick={() => updateStatusMutation.mutate(statusDialogRecord)} disabled={updateStatusMutation.isPending}>
                   Save Status
                 </Button>
