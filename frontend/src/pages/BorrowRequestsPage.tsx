@@ -82,6 +82,7 @@ export default function BorrowRequestsPage() {
   });
 
   const preferredAsset = preferredAssetQuery.data?.asset ?? null;
+  const availableApprovalAssets = availableAssetsQuery.data ?? [];
   const selectedCategory = useMemo(
     () => categoriesQuery.data?.find(category => category.id === form.categoryId) ?? null,
     [categoriesQuery.data, form.categoryId],
@@ -208,6 +209,14 @@ export default function BorrowRequestsPage() {
     : preferredAsset
       ? `${preferredAsset.categoryName} - ${preferredAsset.categoryId}`
       : 'Search categories...';
+
+  const approvalAssetHelperText = availableAssetsQuery.isLoading
+    ? 'Loading available assets...'
+    : availableAssetsQuery.isError
+      ? 'Unable to load available assets right now.'
+      : availableApprovalAssets.length
+        ? `Showing ${availableApprovalAssets.length} available asset${availableApprovalAssets.length === 1 ? '' : 's'} matching the requested category.`
+        : 'No available assets match the requested category right now.';
 
   return (
     <div>
@@ -355,13 +364,22 @@ export default function BorrowRequestsPage() {
                 <Label>Fulfillment Asset</Label>
                 <Select value={approvalForm.assetId} onValueChange={value => setApprovalForm(current => ({ ...current, assetId: value }))}>
                   <SelectTrigger><SelectValue placeholder="Select a specific asset/device" /></SelectTrigger>
-                  <SelectContent>
-                    {availableAssetsQuery.data?.map(asset => (
+                  <SelectContent className="z-[60]">
+                    {availableAssetsQuery.isLoading && (
+                      <SelectItem value="__loading" disabled>Loading available assets...</SelectItem>
+                    )}
+                    {availableAssetsQuery.isError && (
+                      <SelectItem value="__error" disabled>Unable to load available assets</SelectItem>
+                    )}
+                    {!availableAssetsQuery.isLoading && !availableAssetsQuery.isError && !availableApprovalAssets.length && (
+                      <SelectItem value="__empty" disabled>No available assets found</SelectItem>
+                    )}
+                    {availableApprovalAssets.map(asset => (
                       <SelectItem key={asset.id} value={asset.id}>{asset.code} - {asset.name}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
-                <p className="text-xs text-muted-foreground">Only available assets matching the requested category are shown.</p>
+                <p className="text-xs text-muted-foreground">{approvalAssetHelperText}</p>
               </div>
 
               <div className="space-y-2">
