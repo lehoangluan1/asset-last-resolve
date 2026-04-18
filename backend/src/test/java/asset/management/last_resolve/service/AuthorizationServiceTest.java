@@ -163,6 +163,25 @@ class AuthorizationServiceTest {
     }
 
     @Test
+    void canUpdateMaintenanceStatusDeniesOfficer() {
+        AppUser officer = TestDataFactory.user(UserRole.OFFICER, itDepartment, "officer");
+        AppUser technician = TestDataFactory.user(UserRole.TECHNICIAN, itDepartment, "tech");
+        Asset asset = TestDataFactory.asset(itDepartment, null, false, LifecycleStatus.UNDER_MAINTENANCE);
+        MaintenanceRecord record = TestDataFactory.maintenanceRecord(asset, technician, MaintenanceStatus.SCHEDULED);
+
+        assertThat(authorizationService.canUpdateMaintenanceStatus(officer, record)).isFalse();
+    }
+
+    @Test
+    void canUpdateMaintenanceStatusAllowsAssignedTechnician() {
+        AppUser technician = TestDataFactory.user(UserRole.TECHNICIAN, itDepartment, "tech");
+        Asset asset = TestDataFactory.asset(itDepartment, null, false, LifecycleStatus.UNDER_MAINTENANCE);
+        MaintenanceRecord record = TestDataFactory.maintenanceRecord(asset, technician, MaintenanceStatus.SCHEDULED);
+
+        assertThat(authorizationService.canUpdateMaintenanceStatus(technician, record)).isTrue();
+    }
+
+    @Test
     void canViewDiscrepancyAllowsManagerInDepartment() {
         AppUser manager = TestDataFactory.user(UserRole.MANAGER, itDepartment, "manager");
         VerificationCampaign campaign = TestDataFactory.campaign("VER-1", CampaignStatus.ACTIVE, Set.of(itDepartment), manager);

@@ -15,7 +15,7 @@ import { Plus, Pencil, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { StatusBadge } from '@/components/StatusBadge';
 import { api, HttpError } from '@/lib/api';
-import type { AssetCategory } from '@/types';
+import type { AssetCategory, Department } from '@/types';
 
 const emptyCategory: Omit<AssetCategory, 'id'> = {
   name: '',
@@ -28,6 +28,12 @@ const emptyCategory: Omit<AssetCategory, 'id'> = {
   status: 'active',
 };
 
+const emptyDepartmentForm = {
+  name: '',
+  code: '',
+  location: '',
+};
+
 export default function AdminPage() {
   const queryClient = useQueryClient();
   const categoriesQuery = useQuery({ queryKey: ['reference', 'categories'], queryFn: api.reference.categories });
@@ -37,11 +43,23 @@ export default function AdminPage() {
   const [catOpen, setCatOpen] = useState(false);
   const [catForm, setCatForm] = useState<Omit<AssetCategory, 'id'>>(emptyCategory);
   const [editingCatId, setEditingCatId] = useState<string | null>(null);
-  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [categoryErrors, setCategoryErrors] = useState<Record<string, string>>({});
+  const [deptOpen, setDeptOpen] = useState(false);
+  const [deptForm, setDeptForm] = useState(emptyDepartmentForm);
+  const [editingDeptId, setEditingDeptId] = useState<string | null>(null);
+  const [departmentErrors, setDepartmentErrors] = useState<Record<string, string>>({});
 
   const categories = categoriesQuery.data ?? [];
   const departments = departmentsQuery.data ?? [];
   const locations = locationsQuery.data ?? [];
+  const invalidateDepartmentQueries = () => {
+    queryClient.invalidateQueries({ queryKey: ['reference', 'departments'] });
+    queryClient.invalidateQueries({ queryKey: ['assets'] });
+    queryClient.invalidateQueries({ queryKey: ['users'] });
+    queryClient.invalidateQueries({ queryKey: ['borrow-requests'] });
+    queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+    queryClient.invalidateQueries({ queryKey: ['verification-campaigns'] });
+  };
 
   const saveMutation = useMutation({
     mutationFn: async () => {
@@ -67,7 +85,29 @@ export default function AdminPage() {
 
   const categoryNames = useMemo(() => new Set(categories.map(category => category.code)), [categories]);
 
-  const openNewCat = () => { setCatForm(emptyCategory); setEditingCatId(null); setErrors({}); setCatOpen(true); };
+  const saveDepartmentMutation = useMutation({
+    mutationFn: async () => {
+      if (editingDeptId) return api.reference.updateDepartment(editingDeptId, deptForm);
+      return api.reference.createDepartment(deptForm);
+    },
+    onSuccess: () => {
+      invalidateDepartmentQueries();
+      toast.success(editingDeptId ? 'Department updated' : 'Department created');
+      setDeptOpen(false);
+    },
+    onError: error => toast.error(error instanceof HttpError ? error.message : 'Unable to save department'),
+  });
+
+  const deleteDepartmentMutation = useMutation({
+    mutationFn: (id: string) => api.reference.deleteDepartment(id),
+    onSuccess: () => {
+      invalidateDepartmentQueries();
+      toast.success('Department deleted');
+    },
+    onError: error => toast.error(error instanceof HttpError ? error.message : 'Unable to delete department'),
+  });
+
+  const openNewCat = () => { setCatForm(emptyCategory); setEditingCatId(null); setCategoryErrors({}); setCatOpen(true); };
   const openEditCat = (category: AssetCategory) => {
     setCatForm({
       name: category.name,
@@ -80,8 +120,26 @@ export default function AdminPage() {
       status: category.status,
     });
     setEditingCatId(category.id);
-    setErrors({});
+    setCategoryErrors({});
     setCatOpen(true);
+  };
+
+  const openNewDept = () => {
+    setDeptForm(emptyDepartmentForm);
+    setEditingDeptId(null);
+    setDepartmentErrors({});
+    setDeptOpen(true);
+  };
+
+  const openEditDept = (department: Department) => {
+    setDeptForm({
+      name: department.name,
+      code: department.code,
+      location: department.location,
+    });
+    setEditingDeptId(department.id);
+    setDepartmentErrors({});
+    setDeptOpen(true);
   };
 
   const validateCat = () => {
@@ -89,13 +147,29 @@ export default function AdminPage() {
     if (!catForm.name.trim()) nextErrors.name = 'Name is required';
     if (!catForm.code.trim()) nextErrors.code = 'Code is required';
     if (categoryNames.has(catForm.code.trim()) && !editingCatId) nextErrors.code = 'Code already exists';
-    setErrors(nextErrors);
+    setCategoryErrors(nextErrors);
+    return Object.keys(nextErrors).length === 0;
+  };
+
+  const validateDepartment = () => {
+    const nextErrors: Record<string, string> = {};
+    const normalizedCode = deptForm.code.trim().toUpperCase();
+    if (!deptForm.name.trim()) nextErrors.name = 'Name is required';
+    if (!normalizedCode) nextErrors.code = 'Code is required';
+    if (!deptForm.location.trim()) nextErrors.location = 'Location is required';
+    if (normalizedCode) {
+      const duplicate = departments.find(department => department.code.trim().toUpperCase() === normalizedCode);
+      if (duplicate && duplicate.id !== editingDeptId) {
+        nextErrors.code = 'Code already exists';
+      }
+    }
+    setDepartmentErrors(nextErrors);
     return Object.keys(nextErrors).length === 0;
   };
 
   return (
     <div>
-      <PageHeader title="Admin / Reference Data" description="Manage categories and review shared reference data" />
+      <PageHeader title="Admin / Reference Data" description="Manage categories, departments, and shared reference data" />
       <div className="p-6">
         <Tabs defaultValue="categories">
           <TabsList>
@@ -136,11 +210,27 @@ export default function AdminPage() {
             <Card className="rounded-xl overflow-hidden">
               <CardHeader className="flex flex-row items-center justify-between">
                 <CardTitle className="text-sm">Departments</CardTitle>
+                <Button size="sm" onClick={openNewDept}><Plus className="h-4 w-4 mr-1.5" />Add Department</Button>
               </CardHeader>
               <Table>
-                <TableHeader><TableRow><TableHead>Code</TableHead><TableHead>Name</TableHead><TableHead>Location</TableHead><TableHead>Employees</TableHead></TableRow></TableHeader>
+                <TableHeader><TableRow><TableHead>Code</TableHead><TableHead>Name</TableHead><TableHead>Location</TableHead><TableHead>Employees</TableHead><TableHead className="w-[80px]">Actions</TableHead></TableRow></TableHeader>
                 <TableBody>
-                  {departments.map(department => <TableRow key={department.id}><TableCell className="font-mono text-xs">{department.code}</TableCell><TableCell className="font-medium">{department.name}</TableCell><TableCell className="text-sm">{department.location}</TableCell><TableCell className="text-sm">{department.employeeCount}</TableCell></TableRow>)}
+                  {departments.length ? departments.map(department => (
+                    <TableRow key={department.id}>
+                      <TableCell className="font-mono text-xs">{department.code}</TableCell>
+                      <TableCell className="font-medium">{department.name}</TableCell>
+                      <TableCell className="text-sm">{department.location}</TableCell>
+                      <TableCell className="text-sm">{department.employeeCount}</TableCell>
+                      <TableCell>
+                        <div className="flex gap-1">
+                          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEditDept(department)}><Pencil className="h-3.5 w-3.5" /></Button>
+                          <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => deleteDepartmentMutation.mutate(department.id)}><Trash2 className="h-3.5 w-3.5" /></Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  )) : (
+                    <TableRow><TableCell colSpan={5} className="py-12 text-center text-muted-foreground">No departments found</TableCell></TableRow>
+                  )}
                 </TableBody>
               </Table>
             </Card>
@@ -172,12 +262,12 @@ export default function AdminPage() {
               <div>
                 <Label>Category Name <span className="text-destructive">*</span></Label>
                 <Input value={catForm.name} onChange={e => setCatForm(current => ({ ...current, name: e.target.value }))} className="mt-1.5" placeholder="e.g. Laptops" />
-                {errors.name && <p className="text-xs text-destructive mt-1">{errors.name}</p>}
+                {categoryErrors.name && <p className="text-xs text-destructive mt-1">{categoryErrors.name}</p>}
               </div>
               <div>
                 <Label>Code <span className="text-destructive">*</span></Label>
                 <Input value={catForm.code} onChange={e => setCatForm(current => ({ ...current, code: e.target.value.toUpperCase() }))} className="mt-1.5" placeholder="e.g. LAP" maxLength={6} />
-                {errors.code && <p className="text-xs text-destructive mt-1">{errors.code}</p>}
+                {categoryErrors.code && <p className="text-xs text-destructive mt-1">{categoryErrors.code}</p>}
               </div>
             </div>
             <div>
@@ -222,6 +312,39 @@ export default function AdminPage() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setCatOpen(false)}>Cancel</Button>
             <Button onClick={() => { if (validateCat()) saveMutation.mutate(); }} disabled={saveMutation.isPending}>{editingCatId ? 'Update' : 'Create'} Category</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={deptOpen} onOpenChange={setDeptOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>{editingDeptId ? 'Edit Department' : 'New Department'}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div>
+              <Label>Department Name <span className="text-destructive">*</span></Label>
+              <Input value={deptForm.name} onChange={event => setDeptForm(current => ({ ...current, name: event.target.value }))} className="mt-1.5" placeholder="e.g. Information Technology" />
+              {departmentErrors.name && <p className="text-xs text-destructive mt-1">{departmentErrors.name}</p>}
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label>Code <span className="text-destructive">*</span></Label>
+                <Input value={deptForm.code} onChange={event => setDeptForm(current => ({ ...current, code: event.target.value.toUpperCase() }))} className="mt-1.5" placeholder="e.g. IT" maxLength={20} />
+                {departmentErrors.code && <p className="text-xs text-destructive mt-1">{departmentErrors.code}</p>}
+              </div>
+              <div>
+                <Label>Location <span className="text-destructive">*</span></Label>
+                <Input value={deptForm.location} onChange={event => setDeptForm(current => ({ ...current, location: event.target.value }))} className="mt-1.5" placeholder="e.g. Tower A" />
+                {departmentErrors.location && <p className="text-xs text-destructive mt-1">{departmentErrors.location}</p>}
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeptOpen(false)}>Cancel</Button>
+            <Button onClick={() => { if (validateDepartment()) saveDepartmentMutation.mutate(); }} disabled={saveDepartmentMutation.isPending}>
+              {editingDeptId ? 'Update' : 'Create'} Department
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

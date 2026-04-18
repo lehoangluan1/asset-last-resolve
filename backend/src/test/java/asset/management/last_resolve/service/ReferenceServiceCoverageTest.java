@@ -12,17 +12,22 @@ import asset.management.last_resolve.entity.AppUser;
 import asset.management.last_resolve.entity.Asset;
 import asset.management.last_resolve.entity.AssetCategory;
 import asset.management.last_resolve.entity.Department;
+import asset.management.last_resolve.entity.BorrowRequest;
 import asset.management.last_resolve.enums.LifecycleStatus;
+import asset.management.last_resolve.enums.BorrowStatus;
 import asset.management.last_resolve.enums.UserRole;
 import asset.management.last_resolve.exception.BadRequestException;
 import asset.management.last_resolve.exception.ResourceNotFoundException;
 import asset.management.last_resolve.mapper.ReferenceMapper;
 import asset.management.last_resolve.mapper.UserMapper;
+import asset.management.last_resolve.repository.AssignmentRepository;
 import asset.management.last_resolve.repository.AppUserRepository;
 import asset.management.last_resolve.repository.AssetCategoryRepository;
 import asset.management.last_resolve.repository.AssetRepository;
+import asset.management.last_resolve.repository.BorrowRequestRepository;
 import asset.management.last_resolve.repository.DepartmentRepository;
 import asset.management.last_resolve.repository.LocationRepository;
+import asset.management.last_resolve.repository.VerificationCampaignRepository;
 import asset.management.last_resolve.support.TestDataFactory;
 import java.util.List;
 import java.util.Optional;
@@ -42,6 +47,9 @@ class ReferenceServiceCoverageTest {
     @Mock private AssetCategoryRepository assetCategoryRepository;
     @Mock private AssetRepository assetRepository;
     @Mock private AppUserRepository appUserRepository;
+    @Mock private BorrowRequestRepository borrowRequestRepository;
+    @Mock private AssignmentRepository assignmentRepository;
+    @Mock private VerificationCampaignRepository verificationCampaignRepository;
 
     private ReferenceService service;
     private Department department;
@@ -54,6 +62,9 @@ class ReferenceServiceCoverageTest {
             assetCategoryRepository,
             assetRepository,
             appUserRepository,
+            borrowRequestRepository,
+            assignmentRepository,
+            verificationCampaignRepository,
             new ReferenceMapper(),
             new UserMapper()
         );
@@ -80,6 +91,68 @@ class ReferenceServiceCoverageTest {
         assertThatThrownBy(() -> service.createCategory(request("LAP")))
             .isInstanceOf(BadRequestException.class)
             .hasMessageContaining("already exists");
+    }
+
+    @Test
+    void createDepartmentNormalizesCodeAndDefaultsEmployeeCount() {
+        when(departmentRepository.findByCodeIgnoreCase("it")).thenReturn(Optional.empty());
+        when(departmentRepository.save(any(Department.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        ReferenceDtos.DepartmentResponse result = service.createDepartment(new ReferenceDtos.DepartmentUpsertRequest(
+            "Information Technology",
+            "it",
+            "Tower A"
+        ));
+
+        ArgumentCaptor<Department> captor = ArgumentCaptor.forClass(Department.class);
+        verify(departmentRepository).save(captor.capture());
+        assertThat(captor.getValue().getCode()).isEqualTo("IT");
+        assertThat(captor.getValue().getEmployeeCount()).isEqualTo(0);
+        assertThat(result.code()).isEqualTo("IT");
+    }
+
+    @Test
+    void updateDepartmentRejectsDuplicateCodes() {
+        Department existing = TestDataFactory.department("OPS");
+        when(departmentRepository.findById(department.getId())).thenReturn(Optional.of(department));
+        when(departmentRepository.findByCodeIgnoreCase("OPS")).thenReturn(Optional.of(existing));
+
+        assertThatThrownBy(() -> service.updateDepartment(department.getId(), new ReferenceDtos.DepartmentUpsertRequest(
+            "IT Department",
+            "OPS",
+            "Tower A"
+        )))
+            .isInstanceOf(BadRequestException.class)
+            .hasMessageContaining("already exists");
+    }
+
+    @Test
+    void deleteDepartmentRejectsDepartmentsInUseByBorrowRequests() {
+        AppUser employee = TestDataFactory.user(UserRole.EMPLOYEE, department, "employee");
+        Asset asset = TestDataFactory.asset(department, employee, true, LifecycleStatus.IN_STORAGE);
+        BorrowRequest request = TestDataFactory.borrowRequest(asset, employee, BorrowStatus.PENDING_APPROVAL);
+        when(departmentRepository.findById(department.getId())).thenReturn(Optional.of(department));
+        when(appUserRepository.findAll()).thenReturn(List.of());
+        when(assetRepository.findAll()).thenReturn(List.of());
+        when(borrowRequestRepository.findAll()).thenReturn(List.of(request));
+
+        assertThatThrownBy(() -> service.deleteDepartment(department.getId()))
+            .isInstanceOf(BadRequestException.class)
+            .hasMessageContaining("in use");
+    }
+
+    @Test
+    void deleteDepartmentDeletesUnusedDepartments() {
+        when(departmentRepository.findById(department.getId())).thenReturn(Optional.of(department));
+        when(appUserRepository.findAll()).thenReturn(List.of());
+        when(assetRepository.findAll()).thenReturn(List.of());
+        when(borrowRequestRepository.findAll()).thenReturn(List.of());
+        when(assignmentRepository.findAll()).thenReturn(List.of());
+        when(verificationCampaignRepository.findAll()).thenReturn(List.of());
+
+        service.deleteDepartment(department.getId());
+
+        verify(departmentRepository).delete(department);
     }
 
     @Test

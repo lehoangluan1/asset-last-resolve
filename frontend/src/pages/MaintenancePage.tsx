@@ -41,8 +41,11 @@ export default function MaintenancePage() {
   const queryClient = useQueryClient();
   const { user, hasGrant } = useAuth();
   const isTechnician = user?.role === 'technician';
+  const isOfficer = user?.role === 'officer';
   const canCreate = user?.role === 'admin' || user?.role === 'officer';
   const canManage = hasGrant(grants.maintenanceManage);
+  const canUpdateStatus = user?.role === 'admin' || user?.role === 'technician';
+  const showActionColumn = canManage && canUpdateStatus;
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState(isTechnician ? 'actionable' : 'all');
   const [createOpen, setCreateOpen] = useState(false);
@@ -154,10 +157,10 @@ export default function MaintenancePage() {
   };
 
   const canUpdateRecord = (record: MaintenanceRecord) => {
-    if (!canManage) return false;
+    if (!showActionColumn) return false;
     if (!nextStatusFor(record)) return false;
     if (user?.role === 'technician') return record.assignedToId === user.id;
-    return user?.role === 'admin' || user?.role === 'officer';
+    return user?.role === 'admin';
   };
 
   const records = useMemo(() => recordsQuery.data?.items ?? [], [recordsQuery.data]);
@@ -206,12 +209,12 @@ export default function MaintenancePage() {
                 <TableHead>Assigned To</TableHead>
                 <TableHead>Scheduled</TableHead>
                 <TableHead>Status</TableHead>
-                {canManage && <TableHead className="w-[140px]">Action</TableHead>}
+                {showActionColumn && <TableHead className="w-[140px]">Action</TableHead>}
               </TableRow>
             </TableHeader>
             <TableBody>
               {recordsQuery.isLoading ? (
-                <TableRow><TableCell colSpan={canManage ? 8 : 7} className="py-12 text-center text-muted-foreground">Loading maintenance records...</TableCell></TableRow>
+                <TableRow><TableCell colSpan={showActionColumn ? 8 : 7} className="py-12 text-center text-muted-foreground">Loading maintenance records...</TableCell></TableRow>
               ) : records.length ? records.map(record => (
                 <TableRow key={record.id}>
                   <TableCell><div><p className="text-sm font-medium">{record.assetName}</p><p className="text-xs text-muted-foreground">{record.assetCode}</p></div></TableCell>
@@ -221,7 +224,7 @@ export default function MaintenancePage() {
                   <TableCell className="text-sm">{record.assignedTo}</TableCell>
                   <TableCell className="text-sm">{record.scheduledDate}</TableCell>
                   <TableCell><StatusBadge status={record.status} /></TableCell>
-                  {canManage && (
+                  {showActionColumn && (
                     <TableCell>
                       {canUpdateRecord(record) ? (
                         <Button variant="outline" size="sm" onClick={() => { setStatusDialogRecord(record); setStatusForm({ completedDate: '', notes: record.notes || '' }); }}>
@@ -234,7 +237,7 @@ export default function MaintenancePage() {
                   )}
                 </TableRow>
               )) : (
-                <TableRow><TableCell colSpan={canManage ? 8 : 7} className="py-12 text-center text-muted-foreground">{isTechnician ? 'No actionable maintenance records found' : 'No records found'}</TableCell></TableRow>
+                <TableRow><TableCell colSpan={showActionColumn ? 8 : 7} className="py-12 text-center text-muted-foreground">{isTechnician ? 'No actionable maintenance records found' : isOfficer ? 'No maintenance records available' : 'No records found'}</TableCell></TableRow>
               )}
             </TableBody>
           </Table>

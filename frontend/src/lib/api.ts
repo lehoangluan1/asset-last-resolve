@@ -107,6 +107,11 @@ export const api = {
   },
   reference: {
     departments: () => request<Department[]>('/api/reference/departments'),
+    createDepartment: (payload: { name: string; code: string; location: string }) =>
+      request<Department>('/api/reference/departments', { method: 'POST', body: JSON.stringify(payload) }),
+    updateDepartment: (id: string, payload: { name: string; code: string; location: string }) =>
+      request<Department>(`/api/reference/departments/${id}`, { method: 'PUT', body: JSON.stringify(payload) }),
+    deleteDepartment: (id: string) => request<void>(`/api/reference/departments/${id}`, { method: 'DELETE' }),
     locations: () => request<Location[]>('/api/reference/locations'),
     categories: () => request<AssetCategory[]>('/api/reference/categories'),
     usersByRoles: (roles: string[]) => request<User[]>(withQuery('/api/reference/users', { roles: roles.join(',') })),

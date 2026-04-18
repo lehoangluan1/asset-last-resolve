@@ -32,6 +32,28 @@ public class ReferenceController {
         return ResponseEntity.ok(referenceService.departments());
     }
 
+    @PostMapping("/departments")
+    @PreAuthorize("hasAuthority('reference.manage')")
+    public ResponseEntity<ReferenceDtos.DepartmentResponse> createDepartment(@Valid @RequestBody ReferenceDtos.DepartmentUpsertRequest request) {
+        return ResponseEntity.ok(referenceService.createDepartment(request));
+    }
+
+    @PutMapping("/departments/{departmentId}")
+    @PreAuthorize("hasAuthority('reference.manage')")
+    public ResponseEntity<ReferenceDtos.DepartmentResponse> updateDepartment(
+        @PathVariable UUID departmentId,
+        @Valid @RequestBody ReferenceDtos.DepartmentUpsertRequest request
+    ) {
+        return ResponseEntity.ok(referenceService.updateDepartment(departmentId, request));
+    }
+
+    @DeleteMapping("/departments/{departmentId}")
+    @PreAuthorize("hasAuthority('reference.manage')")
+    public ResponseEntity<Void> deleteDepartment(@PathVariable UUID departmentId) {
+        referenceService.deleteDepartment(departmentId);
+        return ResponseEntity.noContent().build();
+    }
+
     @GetMapping("/locations")
     @PreAuthorize("hasAuthority('reference.read')")
     public ResponseEntity<List<ReferenceDtos.LocationResponse>> locations() {

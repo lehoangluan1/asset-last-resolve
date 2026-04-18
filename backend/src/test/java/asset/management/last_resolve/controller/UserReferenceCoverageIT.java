@@ -144,6 +144,42 @@ class UserReferenceCoverageIT extends RemoteIntegrationTestSupport {
     }
 
     @Test
+    void adminCanCreateUpdateAndDeleteDepartments() throws Exception {
+        String token = login(ADMIN_USERNAME, DEMO_PASSWORD);
+        String suffix = uniqueSuffix().toUpperCase();
+
+        MvcResult createdResult = mockMvc.perform(post("/api/reference/departments")
+                .header("Authorization", bearer(token))
+                .contentType(APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(Map.of(
+                    "name", "Coverage Department " + suffix,
+                    "code", "DEP" + suffix,
+                    "location", "Tower " + suffix
+                ))))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.code").value("DEP" + suffix))
+            .andReturn();
+
+        String departmentId = objectMapper.readTree(createdResult.getResponse().getContentAsString()).get("id").asText();
+
+        mockMvc.perform(put("/api/reference/departments/" + departmentId)
+                .header("Authorization", bearer(token))
+                .contentType(APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(Map.of(
+                    "name", "Coverage Department Updated " + suffix,
+                    "code", "DEP" + suffix,
+                    "location", "Annex " + suffix
+                ))))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.name").value("Coverage Department Updated " + suffix))
+            .andExpect(jsonPath("$.location").value("Annex " + suffix));
+
+        mockMvc.perform(delete("/api/reference/departments/" + departmentId)
+                .header("Authorization", bearer(token)))
+            .andExpect(status().isNoContent());
+    }
+
+    @Test
     void deleteCategoryRejectsSeededCategoriesThatAreInUse() throws Exception {
         String token = login(ADMIN_USERNAME, DEMO_PASSWORD);
 

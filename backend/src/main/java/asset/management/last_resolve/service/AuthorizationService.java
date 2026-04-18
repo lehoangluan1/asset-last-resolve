@@ -109,10 +109,12 @@ public class AuthorizationService {
     }
 
     public boolean canUpdateMaintenanceStatus(AppUser user, MaintenanceRecord record) {
-        if (isOneOf(user, UserRole.ADMIN, UserRole.OFFICER)) {
+        if (user.getRole() == UserRole.ADMIN) {
             return true;
         }
-        return user.getRole() == UserRole.TECHNICIAN && record.getAssignedToUser().getId().equals(user.getId());
+        return user.getRole() == UserRole.TECHNICIAN
+            && record.getAssignedToUser() != null
+            && record.getAssignedToUser().getId().equals(user.getId());
     }
 
     public boolean canViewDiscrepancy(AppUser user, Discrepancy discrepancy) {

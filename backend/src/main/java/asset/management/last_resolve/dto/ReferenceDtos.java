@@ -18,6 +18,13 @@ public final class ReferenceDtos {
     ) {
     }
 
+    public record DepartmentUpsertRequest(
+        @NotBlank String name,
+        @NotBlank String code,
+        @NotBlank String location
+    ) {
+    }
+
     public record LocationResponse(
         String id,
         String name,

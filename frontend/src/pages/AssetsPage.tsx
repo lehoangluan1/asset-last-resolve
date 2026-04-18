@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { PageHeader } from '@/components/PageHeader';
@@ -17,7 +17,8 @@ import type { LifecycleStatus } from '@/types';
 
 export default function AssetsPage() {
   const navigate = useNavigate();
-  const { hasGrant } = useAuth();
+  const { hasGrant, user } = useAuth();
+  const isManager = user?.role === 'manager';
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [deptFilter, setDeptFilter] = useState<string>('all');
@@ -28,13 +29,19 @@ export default function AssetsPage() {
     queryKey: ['reference', 'departments'],
     queryFn: api.reference.departments,
   });
+  const visibleDepartments = useMemo(() => {
+    const departments = departmentsQuery.data ?? [];
+    if (!isManager || !user?.departmentId) return departments;
+    return departments.filter(department => department.id === user.departmentId);
+  }, [departmentsQuery.data, isManager, user?.departmentId]);
+  const effectiveDeptFilter = isManager ? (user?.departmentId ?? 'all') : deptFilter;
 
   const assetsQuery = useQuery({
-    queryKey: ['assets', search, statusFilter, deptFilter, page, pageSize],
+    queryKey: ['assets', search, statusFilter, effectiveDeptFilter, page, pageSize],
     queryFn: () => api.assets.list({
       search,
       status: statusFilter === 'all' ? undefined : statusFilter,
-      departmentId: deptFilter === 'all' ? undefined : deptFilter,
+      departmentId: effectiveDeptFilter === 'all' ? undefined : effectiveDeptFilter,
       page: page - 1,
       size: pageSize,
     }),
@@ -44,7 +51,7 @@ export default function AssetsPage() {
 
   return (
     <div>
-      <PageHeader title="Assets" description={`${pagination?.totalItems ?? 0} assets in your current scope`}>
+      <PageHeader title="Assets" description={`${pagination?.totalItems ?? 0} assets in ${isManager ? (user?.departmentName ?? 'your department') : 'your current scope'}`}>
         {hasGrant(grants.assetsManage) && (
           <Button size="sm" onClick={() => navigate('/assets/new')}><Plus className="h-4 w-4 mr-1.5" />Add Asset</Button>
         )}
@@ -65,13 +72,20 @@ export default function AssetsPage() {
               ))}
             </SelectContent>
           </Select>
-          <Select value={deptFilter} onValueChange={value => { setDeptFilter(value); setPage(1); }}>
-            <SelectTrigger className="w-[200px]"><SelectValue placeholder="All Departments" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Departments</SelectItem>
-              {departmentsQuery.data?.map(department => <SelectItem key={department.id} value={department.id}>{department.name}</SelectItem>)}
-            </SelectContent>
-          </Select>
+          {isManager ? (
+            <div className="min-w-[220px] rounded-md border bg-muted/30 px-3 py-2">
+              <p className="text-xs text-muted-foreground">Department</p>
+              <p className="text-sm font-medium">{user?.departmentName ?? 'Current department'}</p>
+            </div>
+          ) : (
+            <Select value={deptFilter} onValueChange={value => { setDeptFilter(value); setPage(1); }}>
+              <SelectTrigger className="w-[200px]"><SelectValue placeholder="All Departments" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Departments</SelectItem>
+                {visibleDepartments.map(department => <SelectItem key={department.id} value={department.id}>{department.name}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          )}
         </div>
 
         <div className="rounded-xl border bg-card shadow-sm overflow-hidden">
@@ -122,7 +136,7 @@ export default function AssetsPage() {
                   </TableCell>
                 </TableRow>
               )) : (
-                <TableRow><TableCell colSpan={10} className="text-center py-12 text-muted-foreground">No assets found</TableCell></TableRow>
+                <TableRow><TableCell colSpan={10} className="text-center py-12 text-muted-foreground">{isManager ? 'No assets found for your department' : 'No assets found'}</TableCell></TableRow>
               )}
             </TableBody>
           </Table>
