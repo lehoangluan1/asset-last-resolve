@@ -16,6 +16,7 @@ import asset.management.last_resolve.enums.LifecycleStatus;
 import asset.management.last_resolve.enums.UserRole;
 import asset.management.last_resolve.exception.ForbiddenOperationException;
 import asset.management.last_resolve.mapper.WorkflowMapper;
+import asset.management.last_resolve.repository.AssetRepository;
 import asset.management.last_resolve.repository.DisposalRequestRepository;
 import asset.management.last_resolve.support.TestDataFactory;
 import java.util.List;
@@ -30,6 +31,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 class DisposalServiceCoverageTest {
 
     @Mock private DisposalRequestRepository disposalRequestRepository;
+    @Mock private AssetRepository assetRepository;
     @Mock private WorkflowMapper workflowMapper;
     @Mock private PageResponseFactory pageResponseFactory;
     @Mock private CurrentUserService currentUserService;
@@ -45,6 +47,7 @@ class DisposalServiceCoverageTest {
     void setUp() {
         service = new DisposalService(
             disposalRequestRepository,
+            assetRepository,
             workflowMapper,
             pageResponseFactory,
             currentUserService,

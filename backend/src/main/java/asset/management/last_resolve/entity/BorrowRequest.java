@@ -1,6 +1,7 @@
 package asset.management.last_resolve.entity;
 
 import asset.management.last_resolve.enums.BorrowStatus;
+import asset.management.last_resolve.enums.BorrowTargetType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -23,8 +24,12 @@ import lombok.Setter;
 public class BorrowRequest extends BaseEntity {
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "asset_id", nullable = false)
+    @JoinColumn(name = "asset_id")
     private Asset asset;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "category_id", nullable = false)
+    private AssetCategory category;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "requester_id", nullable = false)
@@ -33,6 +38,10 @@ public class BorrowRequest extends BaseEntity {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "department_id", nullable = false)
     private Department department;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "target_type", nullable = false, length = 30)
+    private BorrowTargetType targetType;
 
     @Column(name = "borrow_date", nullable = false)
     private LocalDate borrowDate;

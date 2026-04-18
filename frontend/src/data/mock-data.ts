@@ -126,12 +126,15 @@ export const borrowRequests: BorrowRequest[] = Array.from({ length: 35 }, (_, i)
   const ba = assets.filter(a => a.borrowable);
   const asset = ba[i % ba.length] || assets[i];
   const req = users[(i + 3) % users.length];
-  return {
-    id: `borrow-${i + 1}`, assetId: asset.id, assetCode: asset.code, assetName: asset.name,
-    requesterId: req.id, requesterName: req.name, departmentId: req.departmentId,
-    borrowDate: `2025-${String((i % 6) + 4).padStart(2, '0')}-${String((i % 28) + 1).padStart(2, '0')}`,
-    returnDate: `2025-${String((i % 6) + 5).padStart(2, '0')}-${String((i % 28) + 1).padStart(2, '0')}`,
-    purpose: ['Team meeting presentation', 'Client demo', 'Quarterly review', 'Training session', 'Off-site event', 'Temporary replacement'][i % 6],
+    return {
+      id: `borrow-${i + 1}`, assetId: asset.id, assetCode: asset.code, assetName: asset.name,
+      categoryId: asset.categoryId, categoryCode: categories.find(category => category.id === asset.categoryId)?.code || 'GEN', categoryName: asset.categoryName || 'General',
+      requesterId: req.id, requesterName: req.name, departmentId: req.departmentId,
+      departmentName: departments.find(department => department.id === req.departmentId)?.name,
+      targetType: 'individual' as const,
+      borrowDate: `2025-${String((i % 6) + 4).padStart(2, '0')}-${String((i % 28) + 1).padStart(2, '0')}`,
+      returnDate: `2025-${String((i % 6) + 5).padStart(2, '0')}-${String((i % 28) + 1).padStart(2, '0')}`,
+      purpose: ['Team meeting presentation', 'Client demo', 'Quarterly review', 'Training session', 'Off-site event', 'Temporary replacement'][i % 6],
     notes: i % 3 === 0 ? 'Please ensure the equipment is charged.' : '',
     status: borrowStatuses[i % borrowStatuses.length],
     approvedBy: i % 3 === 0 ? users[1].id : null, approverNotes: i % 4 === 0 ? 'Approved for the requested period.' : '',
@@ -188,8 +191,9 @@ export const maintenanceRecords: MaintenanceRecord[] = Array.from({ length: 30 }
   description: ['Routine maintenance check', 'Hardware repair', 'Software update', 'Component replacement'][i % 4],
   techCondition: (['good', 'needs-monitoring', 'under-repair', 'not-ready'] as const)[i % 4],
   status: (['scheduled', 'in-progress', 'completed', 'cancelled'] as const)[i % 4],
-  priority: (['low', 'normal', 'high', 'urgent'] as const)[i % 4],
-  assignedTo: users[4].name,
+    priority: (['low', 'normal', 'high', 'urgent'] as const)[i % 4],
+    assignedToId: users[4].id,
+    assignedTo: users[4].name,
   scheduledDate: `2025-${String((i % 6) + 4).padStart(2, '0')}-${String((i % 28) + 1).padStart(2, '0')}`,
   completedDate: i % 4 === 2 ? `2025-${String((i % 6) + 4).padStart(2, '0')}-${String(Math.min((i % 28) + 5, 28)).padStart(2, '0')}` : null,
   cost: Math.round((50 + i * 35) * 100) / 100, notes: i % 3 === 0 ? 'Parts ordered' : '',

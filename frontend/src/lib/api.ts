@@ -19,6 +19,7 @@ import type {
   AuditLog,
   ApiError,
   SearchResponse,
+  BorrowTargetType,
 } from '@/types';
 import { clearStoredSession, getStoredToken } from '@/lib/auth-storage';
 import { API_BASE_URL } from '@/lib/env';
@@ -132,7 +133,16 @@ export const api = {
   borrowRequests: {
     list: (query: { search?: string; status?: string; page?: number; size?: number }) =>
       request<PageResponse<BorrowRequest>>(withQuery('/api/borrow-requests', query)),
-    create: (payload: { assetId: string; borrowDate: string; returnDate: string; purpose: string; notes: string }) =>
+    create: (payload: {
+      assetId?: string;
+      categoryId?: string;
+      targetType?: BorrowTargetType;
+      departmentId?: string;
+      borrowDate: string;
+      returnDate: string;
+      purpose: string;
+      notes?: string;
+    }) =>
       request<BorrowRequest>('/api/borrow-requests', { method: 'POST', body: JSON.stringify(payload) }),
     approve: (id: string, payload?: { notes?: string }) =>
       request<BorrowRequest>(`/api/borrow-requests/${id}/approve`, { method: 'POST', body: JSON.stringify(payload ?? {}) }),
@@ -155,6 +165,8 @@ export const api = {
       cost?: number;
       notes?: string;
     }) => request<MaintenanceRecord>('/api/maintenance', { method: 'POST', body: JSON.stringify(payload) }),
+    updateStatus: (id: string, payload: { status: string; completedDate?: string; notes?: string }) =>
+      request<MaintenanceRecord>(`/api/maintenance/${id}/status`, { method: 'PATCH', body: JSON.stringify(payload) }),
   },
   verification: {
     campaigns: () => request<VerificationCampaign[]>('/api/verification/campaigns'),
@@ -173,6 +185,16 @@ export const api = {
   discrepancies: {
     list: (query: { search?: string; status?: string; severity?: string; page?: number; size?: number }) =>
       request<PageResponse<Discrepancy>>(withQuery('/api/discrepancies', query)),
+    create: (payload: {
+      assetId: string;
+      verificationTaskId?: string;
+      type: string;
+      severity: string;
+      expectedValue: string;
+      observedValue: string;
+      rootCause?: string;
+      notes?: string;
+    }) => request<Discrepancy>('/api/discrepancies', { method: 'POST', body: JSON.stringify(payload) }),
     reconcile: (id: string, payload?: { rootCause?: string; resolution?: string; notes?: string }) =>
       request<Discrepancy>(`/api/discrepancies/${id}/reconcile`, { method: 'POST', body: JSON.stringify(payload ?? {}) }),
     escalate: (id: string, payload?: { rootCause?: string; resolution?: string; notes?: string }) =>
@@ -183,6 +205,8 @@ export const api = {
   disposal: {
     list: (query: { search?: string; status?: string; page?: number; size?: number }) =>
       request<PageResponse<DisposalRequest>>(withQuery('/api/disposal', query)),
+    create: (payload: { assetId: string; reason: string; estimatedValue?: number; notes?: string }) =>
+      request<DisposalRequest>('/api/disposal', { method: 'POST', body: JSON.stringify(payload) }),
     approve: (id: string, payload?: { notes?: string }) =>
       request<DisposalRequest>(`/api/disposal/${id}/approve`, { method: 'POST', body: JSON.stringify(payload ?? {}) }),
     reject: (id: string, payload?: { notes?: string }) =>

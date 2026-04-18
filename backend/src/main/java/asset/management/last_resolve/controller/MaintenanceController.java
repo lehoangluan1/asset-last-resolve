@@ -4,10 +4,13 @@ import asset.management.last_resolve.dto.CommonDtos;
 import asset.management.last_resolve.dto.WorkflowDtos;
 import asset.management.last_resolve.service.MaintenanceService;
 import jakarta.validation.Valid;
+import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -36,5 +39,14 @@ public class MaintenanceController {
     @PreAuthorize("hasAuthority('maintenance.manage')")
     public ResponseEntity<WorkflowDtos.MaintenanceRecordResponse> create(@Valid @RequestBody WorkflowDtos.MaintenanceCreateRequest request) {
         return ResponseEntity.ok(maintenanceService.create(request));
+    }
+
+    @PatchMapping("/{recordId}/status")
+    @PreAuthorize("hasAuthority('maintenance.manage')")
+    public ResponseEntity<WorkflowDtos.MaintenanceRecordResponse> updateStatus(
+        @PathVariable UUID recordId,
+        @Valid @RequestBody WorkflowDtos.MaintenanceStatusUpdateRequest request
+    ) {
+        return ResponseEntity.ok(maintenanceService.updateStatus(recordId, request));
     }
 }

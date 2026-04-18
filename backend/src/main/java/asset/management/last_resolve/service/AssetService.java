@@ -80,7 +80,7 @@ public class AssetService {
         return assetMapper.toAssetDetailResponse(
             asset,
             assignmentRepository.findAll().stream().filter(item -> item.getAsset().getId().equals(assetId)).toList(),
-            borrowRequestRepository.findAll().stream().filter(item -> item.getAsset().getId().equals(assetId)).toList(),
+            borrowRequestRepository.findAll().stream().filter(item -> item.getAsset() != null && item.getAsset().getId().equals(assetId)).toList(),
             maintenanceRecordRepository.findAll().stream().filter(item -> item.getAsset().getId().equals(assetId)).toList(),
             verificationTaskRepository.findAll().stream().filter(item -> item.getAsset().getId().equals(assetId)).toList(),
             discrepancyRepository.findAll().stream().filter(item -> item.getAsset().getId().equals(assetId)).toList(),
@@ -129,7 +129,7 @@ public class AssetService {
         Asset asset = assetRepository.findById(assetId)
             .orElseThrow(() -> new ResourceNotFoundException("Asset not found"));
         boolean linked = assignmentRepository.findAll().stream().anyMatch(item -> item.getAsset().getId().equals(assetId))
-            || borrowRequestRepository.findAll().stream().anyMatch(item -> item.getAsset().getId().equals(assetId))
+            || borrowRequestRepository.findAll().stream().anyMatch(item -> item.getAsset() != null && item.getAsset().getId().equals(assetId))
             || maintenanceRecordRepository.findAll().stream().anyMatch(item -> item.getAsset().getId().equals(assetId));
         if (linked) {
             throw new BadRequestException("Asset cannot be deleted while related workflow records exist");

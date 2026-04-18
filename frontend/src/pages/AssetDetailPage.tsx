@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Timeline } from '@/components/Timeline';
-import { Pencil, ArrowLeftRight, HandCoins, Wrench, Trash2, ArrowLeft } from 'lucide-react';
+import { Pencil, ArrowLeftRight, HandCoins, Wrench, Trash2, ArrowLeft, AlertTriangle } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { grants } from '@/lib/permissions';
@@ -52,7 +52,8 @@ export default function AssetDetailPage() {
         )}
         {hasGrant(grants.borrowsRequest) && <Button size="sm" variant="outline" onClick={() => navigate('/borrow-requests')}><HandCoins className="h-4 w-4 mr-1.5" />Borrow</Button>}
         {hasGrant(grants.maintenanceRead) && <Button size="sm" variant="outline" onClick={() => navigate('/maintenance')}><Wrench className="h-4 w-4 mr-1.5" />Maintenance</Button>}
-        {hasGrant(grants.disposalManage) && <Button size="sm" variant="outline" className="text-destructive" onClick={() => navigate('/disposal')}><Trash2 className="h-4 w-4 mr-1.5" />Dispose</Button>}
+        {hasGrant(grants.discrepanciesManage) && <Button size="sm" variant="outline" onClick={() => navigate(`/discrepancies?create=1&assetId=${asset.id}`)}><AlertTriangle className="h-4 w-4 mr-1.5" />Report Discrepancy</Button>}
+        {hasGrant(grants.disposalManage) && <Button size="sm" variant="outline" className="text-destructive" onClick={() => navigate(`/disposal?create=1&assetId=${asset.id}`)}><Trash2 className="h-4 w-4 mr-1.5" />Add Disposal Item</Button>}
       </PageHeader>
 
       <div className="p-6">

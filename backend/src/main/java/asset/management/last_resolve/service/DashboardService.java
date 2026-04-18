@@ -118,7 +118,7 @@ public class DashboardService {
             .filter(item -> item.getReturnDate() != null && item.getStatus().getValue().equals("checked-out"))
             .sorted(Comparator.comparing(item -> item.getReturnDate()))
             .limit(2)
-            .forEach(item -> upcomingDeadlines.add(new DashboardDtos.DeadlineItemResponse(item.getAsset().getName() + " return", item.getReturnDate().toString(), "pending")));
+            .forEach(item -> upcomingDeadlines.add(new DashboardDtos.DeadlineItemResponse((item.getAsset() == null ? item.getCategory().getName() : item.getAsset().getName()) + " return", item.getReturnDate().toString(), "pending")));
 
         Set<String> visibleEntityIds = java.util.stream.Stream.of(
                 visibleAssets.stream().map(asset -> asset.getId().toString()),

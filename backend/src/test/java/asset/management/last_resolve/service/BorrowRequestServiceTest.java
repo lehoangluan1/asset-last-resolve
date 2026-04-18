@@ -18,8 +18,10 @@ import asset.management.last_resolve.enums.UserRole;
 import asset.management.last_resolve.exception.BadRequestException;
 import asset.management.last_resolve.exception.ForbiddenOperationException;
 import asset.management.last_resolve.mapper.WorkflowMapper;
+import asset.management.last_resolve.repository.AssetCategoryRepository;
 import asset.management.last_resolve.repository.AssetRepository;
 import asset.management.last_resolve.repository.BorrowRequestRepository;
+import asset.management.last_resolve.repository.DepartmentRepository;
 import asset.management.last_resolve.support.TestDataFactory;
 import java.util.Optional;
 import java.util.Set;
@@ -38,6 +40,10 @@ class BorrowRequestServiceTest {
     private BorrowRequestRepository borrowRequestRepository;
     @Mock
     private AssetRepository assetRepository;
+    @Mock
+    private AssetCategoryRepository assetCategoryRepository;
+    @Mock
+    private DepartmentRepository departmentRepository;
     @Mock
     private WorkflowMapper workflowMapper;
     @Mock
@@ -60,6 +66,8 @@ class BorrowRequestServiceTest {
         service = new BorrowRequestService(
             borrowRequestRepository,
             assetRepository,
+            assetCategoryRepository,
+            departmentRepository,
             workflowMapper,
             pageResponseFactory,
             currentUserService,
@@ -216,7 +224,7 @@ class BorrowRequestServiceTest {
     }
 
     private WorkflowDtos.BorrowRequestCreateRequest request(String borrowDate, String returnDate) {
-        return new WorkflowDtos.BorrowRequestCreateRequest(asset.getId().toString(), borrowDate, returnDate, "Demo purpose", "Notes");
+        return new WorkflowDtos.BorrowRequestCreateRequest(asset.getId().toString(), null, null, null, borrowDate, returnDate, "Demo purpose", "Notes");
     }
 
     private WorkflowDtos.BorrowRequestResponse response(String id, BorrowStatus status) {
@@ -225,10 +233,14 @@ class BorrowRequestServiceTest {
             asset.getId().toString(),
             asset.getCode(),
             asset.getName(),
+            asset.getCategory().getId().toString(),
+            asset.getCategory().getCode(),
+            asset.getCategory().getName(),
             requester.getId().toString(),
             requester.getFullName(),
             requester.getDepartment().getId().toString(),
             requester.getDepartment().getName(),
+            "individual",
             "2026-04-20",
             "2026-04-21",
             "Demo purpose",

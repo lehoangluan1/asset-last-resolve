@@ -18,8 +18,10 @@ import asset.management.last_resolve.enums.UserRole;
 import asset.management.last_resolve.exception.ForbiddenOperationException;
 import asset.management.last_resolve.mapper.WorkflowMapper;
 import asset.management.last_resolve.repository.AppUserRepository;
+import asset.management.last_resolve.repository.AssetRepository;
 import asset.management.last_resolve.repository.DiscrepancyRepository;
 import asset.management.last_resolve.repository.MaintenanceRecordRepository;
+import asset.management.last_resolve.repository.VerificationTaskRepository;
 import asset.management.last_resolve.support.TestDataFactory;
 import java.util.List;
 import java.util.Optional;
@@ -36,6 +38,8 @@ class DiscrepancyReadCoverageTest {
     @Mock private DiscrepancyRepository discrepancyRepository;
     @Mock private MaintenanceRecordRepository maintenanceRecordRepository;
     @Mock private AppUserRepository appUserRepository;
+    @Mock private AssetRepository assetRepository;
+    @Mock private VerificationTaskRepository verificationTaskRepository;
     @Mock private WorkflowMapper workflowMapper;
     @Mock private PageResponseFactory pageResponseFactory;
     @Mock private CurrentUserService currentUserService;
@@ -52,6 +56,8 @@ class DiscrepancyReadCoverageTest {
             discrepancyRepository,
             maintenanceRecordRepository,
             appUserRepository,
+            assetRepository,
+            verificationTaskRepository,
             workflowMapper,
             pageResponseFactory,
             currentUserService,

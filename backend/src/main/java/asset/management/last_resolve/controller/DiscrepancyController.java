@@ -3,6 +3,7 @@ package asset.management.last_resolve.controller;
 import asset.management.last_resolve.dto.CommonDtos;
 import asset.management.last_resolve.dto.WorkflowDtos;
 import asset.management.last_resolve.service.DiscrepancyService;
+import jakarta.validation.Valid;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -38,6 +39,12 @@ public class DiscrepancyController {
     @PreAuthorize("hasAuthority('discrepancies.read')")
     public ResponseEntity<WorkflowDtos.DiscrepancyResponse> get(@PathVariable UUID discrepancyId) {
         return ResponseEntity.ok(discrepancyService.get(discrepancyId));
+    }
+
+    @PostMapping
+    @PreAuthorize("hasAuthority('discrepancies.manage')")
+    public ResponseEntity<WorkflowDtos.DiscrepancyResponse> create(@Valid @RequestBody WorkflowDtos.DiscrepancyCreateRequest request) {
+        return ResponseEntity.ok(discrepancyService.create(request));
     }
 
     @PostMapping("/{discrepancyId}/reconcile")

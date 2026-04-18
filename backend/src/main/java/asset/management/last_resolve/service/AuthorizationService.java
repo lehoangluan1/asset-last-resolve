@@ -104,6 +104,17 @@ public class AuthorizationService {
         return isOneOf(user, UserRole.ADMIN, UserRole.OFFICER, UserRole.TECHNICIAN);
     }
 
+    public boolean canCreateMaintenance(AppUser user) {
+        return isOneOf(user, UserRole.ADMIN, UserRole.OFFICER);
+    }
+
+    public boolean canUpdateMaintenanceStatus(AppUser user, MaintenanceRecord record) {
+        if (isOneOf(user, UserRole.ADMIN, UserRole.OFFICER)) {
+            return true;
+        }
+        return user.getRole() == UserRole.TECHNICIAN && record.getAssignedToUser().getId().equals(user.getId());
+    }
+
     public boolean canViewDiscrepancy(AppUser user, Discrepancy discrepancy) {
         if (isOneOf(user, UserRole.ADMIN, UserRole.OFFICER, UserRole.AUDITOR)) {
             return true;

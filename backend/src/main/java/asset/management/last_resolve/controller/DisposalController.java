@@ -3,6 +3,7 @@ package asset.management.last_resolve.controller;
 import asset.management.last_resolve.dto.CommonDtos;
 import asset.management.last_resolve.dto.WorkflowDtos;
 import asset.management.last_resolve.service.DisposalService;
+import jakarta.validation.Valid;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -31,6 +32,12 @@ public class DisposalController {
         @RequestParam(defaultValue = "10") int size
     ) {
         return ResponseEntity.ok(disposalService.list(search, status, page, size));
+    }
+
+    @PostMapping
+    @PreAuthorize("hasAuthority('disposal.manage')")
+    public ResponseEntity<WorkflowDtos.DisposalRequestResponse> create(@Valid @RequestBody WorkflowDtos.DisposalCreateRequest request) {
+        return ResponseEntity.ok(disposalService.create(request));
     }
 
     @PostMapping("/{disposalId}/approve")

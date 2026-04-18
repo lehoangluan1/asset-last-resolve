@@ -126,7 +126,7 @@ public class SearchService {
             page.items().stream()
                 .map(request -> new SearchDtos.SearchItemResponse(
                     request.id(),
-                    request.assetName(),
+                    request.assetName() == null ? request.categoryName() : request.assetName(),
                     request.requesterName(),
                     "%s • Return %s".formatted(request.purpose(), request.returnDate()),
                     request.status(),

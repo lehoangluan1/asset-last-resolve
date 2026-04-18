@@ -87,7 +87,7 @@ class SearchServiceCoverageTest {
     void searchIncludesWorkflowSectionsWhenGranted() {
         when(currentUserService.currentPrincipal()).thenReturn(new AuthenticatedUser(admin, Set.of(PermissionGrant.BORROWS_READ, PermissionGrant.MAINTENANCE_READ)));
         when(borrowRequestService.list("Laptop", null, 0, 5)).thenReturn(new CommonDtos.PageResponse<>(
-            List.of(new WorkflowDtos.BorrowRequestResponse("borrow-1", "asset-1", "AST-1", "Laptop", "user-1", "User", "dep-1", "IT", "2026-04-20", "2026-04-22", "Coverage", null, "pending-approval", null, null, null, null, "2026-04-16T00:00:00Z")),
+            List.of(new WorkflowDtos.BorrowRequestResponse("borrow-1", "asset-1", "AST-1", "Laptop", "cat-1", "LAP", "Laptops", "user-1", "User", "dep-1", "IT", "individual", "2026-04-20", "2026-04-22", "Coverage", null, "pending-approval", null, null, null, null, "2026-04-16T00:00:00Z")),
             1, 0, 5, 1
         ));
         when(maintenanceService.list("Laptop", null, 0, 5)).thenReturn(new CommonDtos.PageResponse<>(

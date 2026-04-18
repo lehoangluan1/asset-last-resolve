@@ -38,10 +38,14 @@ public final class WorkflowDtos {
         String assetId,
         String assetCode,
         String assetName,
+        String categoryId,
+        String categoryCode,
+        String categoryName,
         String requesterId,
         String requesterName,
         String departmentId,
         String departmentName,
+        String targetType,
         String borrowDate,
         String returnDate,
         String purpose,
@@ -56,10 +60,13 @@ public final class WorkflowDtos {
     }
 
     public record BorrowRequestCreateRequest(
-        @NotBlank String assetId,
+        String assetId,
+        String categoryId,
+        String targetType,
+        String departmentId,
         @NotBlank String borrowDate,
         @NotBlank String returnDate,
-        @NotBlank String purpose,
+        String purpose,
         String notes
     ) {
     }
@@ -100,6 +107,13 @@ public final class WorkflowDtos {
         @NotBlank String scheduledDate,
         String completedDate,
         Double cost,
+        String notes
+    ) {
+    }
+
+    public record MaintenanceStatusUpdateRequest(
+        @NotBlank String status,
+        String completedDate,
         String notes
     ) {
     }
@@ -180,6 +194,18 @@ public final class WorkflowDtos {
     ) {
     }
 
+    public record DiscrepancyCreateRequest(
+        @NotBlank String assetId,
+        String verificationTaskId,
+        @NotBlank String type,
+        @NotBlank String severity,
+        @NotBlank String expectedValue,
+        @NotBlank String observedValue,
+        String rootCause,
+        String notes
+    ) {
+    }
+
     public record DisposalRequestResponse(
         String id,
         String assetId,
@@ -193,6 +219,14 @@ public final class WorkflowDtos {
         Double estimatedValue,
         String notes,
         String createdAt
+    ) {
+    }
+
+    public record DisposalCreateRequest(
+        @NotBlank String assetId,
+        @NotBlank String reason,
+        Double estimatedValue,
+        String notes
     ) {
     }
 }

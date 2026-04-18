@@ -7,6 +7,7 @@ export type AssignmentType = 'permanent' | 'temporary' | 'borrow';
 export type TransferStatus = 'pending' | 'completed' | 'cancelled';
 
 export type BorrowStatus = 'draft' | 'pending-approval' | 'approved' | 'rejected' | 'checked-out' | 'returned' | 'overdue' | 'cancelled';
+export type BorrowTargetType = 'individual' | 'department';
 export type CampaignStatus = 'draft' | 'active' | 'completed' | 'cancelled';
 export type VerificationResult = 'matched' | 'discrepancy' | 'pending';
 export type DiscrepancySeverity = 'low' | 'medium' | 'high' | 'critical';
@@ -141,13 +142,17 @@ export interface Assignment {
 
 export interface BorrowRequest {
   id: string;
-  assetId: string;
-  assetCode: string;
-  assetName: string;
+  assetId: string | null;
+  assetCode: string | null;
+  assetName: string | null;
+  categoryId: string;
+  categoryCode: string;
+  categoryName: string;
   requesterId: string;
   requesterName: string;
   departmentId: string;
   departmentName?: string;
+  targetType: BorrowTargetType;
   borrowDate: string;
   returnDate: string;
   purpose: string;

@@ -50,7 +50,9 @@ public class MaintenanceService {
             .filter(record -> normalizedSearch.isBlank()
                 || record.getAsset().getName().toLowerCase(Locale.ROOT).contains(normalizedSearch))
             .filter(record -> status == null || status.isBlank() || status.equalsIgnoreCase("all")
-                || record.getStatus().getValue().equalsIgnoreCase(status))
+                || (status.equalsIgnoreCase("actionable")
+                    ? record.getStatus() == MaintenanceStatus.SCHEDULED || record.getStatus() == MaintenanceStatus.IN_PROGRESS
+                    : record.getStatus().getValue().equalsIgnoreCase(status)))
             .sorted(Comparator.comparing(MaintenanceRecord::getCreatedAt).reversed())
             .map(workflowMapper::toMaintenanceResponse)
             .toList();
@@ -60,7 +62,7 @@ public class MaintenanceService {
     @Transactional
     public WorkflowDtos.MaintenanceRecordResponse create(WorkflowDtos.MaintenanceCreateRequest request) {
         AppUser currentUser = currentUserService.currentUser();
-        if (!authorizationService.canManageMaintenance(currentUser)) {
+        if (!authorizationService.canCreateMaintenance(currentUser)) {
             throw new ForbiddenOperationException("You do not have permission to create maintenance records");
         }
         Asset asset = assetRepository.findById(UUID.fromString(request.assetId()))
@@ -110,5 +112,62 @@ public class MaintenanceService {
         );
         auditService.log(currentUser, "Created Maintenance", "Maintenance", saved.getId().toString(), saved.getAsset().getName(), "Created maintenance record");
         return workflowMapper.toMaintenanceResponse(saved);
+    }
+
+    @Transactional
+    public WorkflowDtos.MaintenanceRecordResponse updateStatus(UUID recordId, WorkflowDtos.MaintenanceStatusUpdateRequest request) {
+        AppUser currentUser = currentUserService.currentUser();
+        MaintenanceRecord record = maintenanceRecordRepository.findById(recordId)
+            .orElseThrow(() -> new ResourceNotFoundException("Maintenance record not found"));
+        if (!authorizationService.canUpdateMaintenanceStatus(currentUser, record)) {
+            throw new ForbiddenOperationException("You do not have permission to update this maintenance record");
+        }
+
+        MaintenanceStatus targetStatus = MaintenanceStatus.fromValue(request.status());
+        validateStatusTransition(record.getStatus(), targetStatus);
+
+        record.setStatus(targetStatus);
+        if (request.notes() != null && !request.notes().isBlank()) {
+            record.setNotes(request.notes().trim());
+        }
+        if (targetStatus == MaintenanceStatus.IN_PROGRESS) {
+            record.getAsset().setLifecycleStatus(LifecycleStatus.UNDER_MAINTENANCE);
+            record.setCompletedDate(null);
+        } else if (targetStatus == MaintenanceStatus.COMPLETED) {
+            java.time.LocalDate completedDate = request.completedDate() == null || request.completedDate().isBlank()
+                ? java.time.LocalDate.now()
+                : java.time.LocalDate.parse(request.completedDate());
+            if (completedDate.isBefore(record.getScheduledDate())) {
+                throw new BadRequestException("Completed date cannot be before the scheduled date");
+            }
+            record.setCompletedDate(completedDate);
+            record.getAsset().setLifecycleStatus(record.getAsset().getAssignedToUser() == null ? LifecycleStatus.IN_STORAGE : LifecycleStatus.IN_USE);
+            if (record.getAsset().getAssignedToUser() != null) {
+                notificationService.create(
+                    record.getAsset().getAssignedToUser(),
+                    "Maintenance completed",
+                    "%s is ready after maintenance.".formatted(record.getAsset().getName()),
+                    NotificationType.MAINTENANCE_COMPLETED,
+                    "Maintenance",
+                    record.getId().toString(),
+                    currentUser.getFullName(),
+                    "normal"
+                );
+            }
+        }
+
+        MaintenanceRecord saved = maintenanceRecordRepository.save(record);
+        auditService.log(currentUser, "Updated Maintenance", "Maintenance", saved.getId().toString(), saved.getAsset().getName(), "Changed maintenance status to " + targetStatus.getValue());
+        return workflowMapper.toMaintenanceResponse(saved);
+    }
+
+    private void validateStatusTransition(MaintenanceStatus currentStatus, MaintenanceStatus targetStatus) {
+        if (currentStatus == MaintenanceStatus.SCHEDULED && targetStatus == MaintenanceStatus.IN_PROGRESS) {
+            return;
+        }
+        if (currentStatus == MaintenanceStatus.IN_PROGRESS && targetStatus == MaintenanceStatus.COMPLETED) {
+            return;
+        }
+        throw new BadRequestException("Invalid maintenance status transition");
     }
 }

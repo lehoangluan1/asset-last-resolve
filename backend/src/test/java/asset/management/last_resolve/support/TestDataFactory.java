@@ -17,6 +17,7 @@ import asset.management.last_resolve.entity.VerificationTask;
 import asset.management.last_resolve.enums.AssetCondition;
 import asset.management.last_resolve.enums.AssignmentType;
 import asset.management.last_resolve.enums.BorrowStatus;
+import asset.management.last_resolve.enums.BorrowTargetType;
 import asset.management.last_resolve.enums.CampaignStatus;
 import asset.management.last_resolve.enums.DiscrepancySeverity;
 import asset.management.last_resolve.enums.DiscrepancyStatus;
@@ -96,8 +97,10 @@ public final class TestDataFactory {
     public static BorrowRequest borrowRequest(Asset asset, AppUser requester, BorrowStatus status) {
         BorrowRequest request = stamp(new BorrowRequest());
         request.setAsset(asset);
+        request.setCategory(asset.getCategory());
         request.setRequester(requester);
         request.setDepartment(requester.getDepartment());
+        request.setTargetType(BorrowTargetType.INDIVIDUAL);
         request.setBorrowDate(LocalDate.now().plusDays(1));
         request.setReturnDate(LocalDate.now().plusDays(3));
         request.setPurpose("Demo");

@@ -82,7 +82,7 @@ class MaintenanceServiceTest {
     @Test
     void createRejectsUnauthorizedUsers() {
         when(currentUserService.currentUser()).thenReturn(creator);
-        when(authorizationService.canManageMaintenance(creator)).thenReturn(false);
+        when(authorizationService.canCreateMaintenance(creator)).thenReturn(false);
 
         assertThatThrownBy(() -> service.create(request(MaintenanceStatus.SCHEDULED, null)))
             .isInstanceOf(ForbiddenOperationException.class)
@@ -93,7 +93,7 @@ class MaintenanceServiceTest {
     void createRejectsInvalidAssignedRole() {
         AppUser invalidAssignee = TestDataFactory.user(UserRole.EMPLOYEE, creator.getDepartment(), "employee");
         when(currentUserService.currentUser()).thenReturn(creator);
-        when(authorizationService.canManageMaintenance(creator)).thenReturn(true);
+        when(authorizationService.canCreateMaintenance(creator)).thenReturn(true);
         when(assetRepository.findById(asset.getId())).thenReturn(Optional.of(asset));
         when(appUserRepository.findById(invalidAssignee.getId())).thenReturn(Optional.of(invalidAssignee));
         when(authorizationService.isOneOf(invalidAssignee, UserRole.TECHNICIAN, UserRole.OFFICER)).thenReturn(false);
@@ -106,7 +106,7 @@ class MaintenanceServiceTest {
     @Test
     void createRejectsCompletedDateBeforeScheduledDate() {
         when(currentUserService.currentUser()).thenReturn(creator);
-        when(authorizationService.canManageMaintenance(creator)).thenReturn(true);
+        when(authorizationService.canCreateMaintenance(creator)).thenReturn(true);
         when(assetRepository.findById(asset.getId())).thenReturn(Optional.of(asset));
         when(appUserRepository.findById(technician.getId())).thenReturn(Optional.of(technician));
         when(authorizationService.isOneOf(technician, UserRole.TECHNICIAN, UserRole.OFFICER)).thenReturn(true);
@@ -119,7 +119,7 @@ class MaintenanceServiceTest {
     @Test
     void createRejectsCompletedStatusWithoutCompletedDate() {
         when(currentUserService.currentUser()).thenReturn(creator);
-        when(authorizationService.canManageMaintenance(creator)).thenReturn(true);
+        when(authorizationService.canCreateMaintenance(creator)).thenReturn(true);
         when(assetRepository.findById(asset.getId())).thenReturn(Optional.of(asset));
         when(appUserRepository.findById(technician.getId())).thenReturn(Optional.of(technician));
         when(authorizationService.isOneOf(technician, UserRole.TECHNICIAN, UserRole.OFFICER)).thenReturn(true);
@@ -133,7 +133,7 @@ class MaintenanceServiceTest {
     void createMovesAssetIntoUnderMaintenanceForActiveWork() {
         WorkflowDtos.MaintenanceRecordResponse response = response(MaintenanceStatus.IN_PROGRESS);
         when(currentUserService.currentUser()).thenReturn(creator);
-        when(authorizationService.canManageMaintenance(creator)).thenReturn(true);
+        when(authorizationService.canCreateMaintenance(creator)).thenReturn(true);
         when(assetRepository.findById(asset.getId())).thenReturn(Optional.of(asset));
         when(appUserRepository.findById(technician.getId())).thenReturn(Optional.of(technician));
         when(authorizationService.isOneOf(technician, UserRole.TECHNICIAN, UserRole.OFFICER)).thenReturn(true);
@@ -157,7 +157,7 @@ class MaintenanceServiceTest {
     void createAllowsCompletedMaintenanceWhenCompletedDateProvided() {
         WorkflowDtos.MaintenanceRecordResponse response = response(MaintenanceStatus.COMPLETED);
         when(currentUserService.currentUser()).thenReturn(creator);
-        when(authorizationService.canManageMaintenance(creator)).thenReturn(true);
+        when(authorizationService.canCreateMaintenance(creator)).thenReturn(true);
         when(assetRepository.findById(asset.getId())).thenReturn(Optional.of(asset));
         when(appUserRepository.findById(technician.getId())).thenReturn(Optional.of(technician));
         when(authorizationService.isOneOf(technician, UserRole.TECHNICIAN, UserRole.OFFICER)).thenReturn(true);
@@ -182,6 +182,25 @@ class MaintenanceServiceTest {
             eq(creator.getFullName()),
             eq("normal")
         );
+    }
+
+    @Test
+    void updateStatusAllowsAssignedTechnicianToCompleteRecord() {
+        MaintenanceRecord record = TestDataFactory.maintenanceRecord(asset, technician, MaintenanceStatus.IN_PROGRESS);
+        WorkflowDtos.MaintenanceRecordResponse response = response(MaintenanceStatus.COMPLETED);
+        asset.setLifecycleStatus(LifecycleStatus.UNDER_MAINTENANCE);
+
+        when(currentUserService.currentUser()).thenReturn(technician);
+        when(maintenanceRecordRepository.findById(record.getId())).thenReturn(Optional.of(record));
+        when(authorizationService.canUpdateMaintenanceStatus(technician, record)).thenReturn(true);
+        when(maintenanceRecordRepository.save(record)).thenReturn(record);
+        when(workflowMapper.toMaintenanceResponse(record)).thenReturn(response);
+
+        WorkflowDtos.MaintenanceRecordResponse result = service.updateStatus(record.getId(), new WorkflowDtos.MaintenanceStatusUpdateRequest("completed", "2026-04-21", "Finished"));
+
+        assertThat(record.getStatus()).isEqualTo(MaintenanceStatus.COMPLETED);
+        assertThat(record.getCompletedDate()).isNotNull();
+        assertThat(result.status()).isEqualTo(MaintenanceStatus.COMPLETED.getValue());
     }
 
     private WorkflowDtos.MaintenanceCreateRequest request(MaintenanceStatus status, String completedDate) {

@@ -18,8 +18,10 @@ import asset.management.last_resolve.enums.LifecycleStatus;
 import asset.management.last_resolve.enums.UserRole;
 import asset.management.last_resolve.exception.ForbiddenOperationException;
 import asset.management.last_resolve.mapper.WorkflowMapper;
+import asset.management.last_resolve.repository.AssetCategoryRepository;
 import asset.management.last_resolve.repository.AssetRepository;
 import asset.management.last_resolve.repository.BorrowRequestRepository;
+import asset.management.last_resolve.repository.DepartmentRepository;
 import asset.management.last_resolve.support.TestDataFactory;
 import java.util.List;
 import java.util.Optional;
@@ -34,6 +36,8 @@ class BorrowRequestReadCoverageTest {
 
     @Mock private BorrowRequestRepository borrowRequestRepository;
     @Mock private AssetRepository assetRepository;
+    @Mock private AssetCategoryRepository assetCategoryRepository;
+    @Mock private DepartmentRepository departmentRepository;
     @Mock private WorkflowMapper workflowMapper;
     @Mock private PageResponseFactory pageResponseFactory;
     @Mock private CurrentUserService currentUserService;
@@ -51,6 +55,8 @@ class BorrowRequestReadCoverageTest {
         service = new BorrowRequestService(
             borrowRequestRepository,
             assetRepository,
+            assetCategoryRepository,
+            departmentRepository,
             workflowMapper,
             pageResponseFactory,
             currentUserService,
@@ -114,10 +120,14 @@ class BorrowRequestReadCoverageTest {
             request.getAsset().getId().toString(),
             request.getAsset().getCode(),
             request.getAsset().getName(),
+            request.getCategory().getId().toString(),
+            request.getCategory().getCode(),
+            request.getCategory().getName(),
             employee.getId().toString(),
             employee.getFullName(),
             employee.getDepartment().getId().toString(),
             employee.getDepartment().getName(),
+            "individual",
             request.getBorrowDate().toString(),
             request.getReturnDate().toString(),
             request.getPurpose(),
